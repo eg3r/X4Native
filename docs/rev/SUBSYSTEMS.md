@@ -484,6 +484,172 @@ SetCustomGameStartPlayerPropertySectorAndOffset(
 
 Note: takes the sector **macro name** string, not a `UniverseID`. Sector macro naming convention: `cluster_NN_sectorNNN_macro` (confirmed from `libraries/gamestarts.xml` v9.00). Use `GetComponentName(sector_universe_id)` on the host to retrieve the macro name for an arbitrary sector.
 
+--- 
+
+## 12. Faction System
+
+### 12.1 Overview
+
+Factions are static data loaded from `libraries/factions.xml` at game start. There is no
+runtime `CreateFaction` API — confirmed absent from all 2,359 PE exports, Lua FFI, and
+the binary string table.
+
+### 12.2 Runtime Layout
+
+**Global**: `0x146C6BB88` — pointer to `FactionManager` object.
+
+**Faction lookup** — `std::map<FNV1a_hash, FactionData>` BST:
+- `FactionManager + 16` — BST sentinel node (begin/end marker)
+- `FactionManager + 24` — BST root node pointer (`nullptr` if empty)
+- Hash key: FNV-1a 32-bit hash of faction ID string (seed `2166136261`, multiplier `16777619`)
+- Tree walk: `if (node[4] < hash) → right child (node[2])`, else `left = node[1]`
+- Faction data: at `tree_node + 48` (FactionData is inline in the map node)
+
+**`FactionData` struct** (offsets from `tree_node + 48`):
+```
++0    vtable*                 virtual: isHidden() at slot 13 (vtable+104)
++16   faction_id std::string  SSO: inline buffer if size < 16; heap ptr at +16 if size >= 16
++560  numeric_faction_index   DWORD — integer slot ID used in galaxy entity arrays
++640  sub-object*             localization/name data; display name string at sub+1304
+```
+
+**Iteration** (`GetAllFactions`, `GetNumAllFactions`): calls `sub_1402D5CF0(FactionManager, &range)`
+which builds an ordered range from the BST for in-order traversal.
+
+### 12.3 Galaxy Entity Arrays (Faction-Indexed)
+
+Ships and stations for a faction are not stored inside `FactionData`. They live in a
+**pre-allocated flat array** inside the galaxy object:
+
+```
+galaxy = *(qword_143C97858 + 552)         // galaxy object
+ships  = galaxy[23]                        // = *(galaxy + 184), the ship-list manager
+slot   = faction_numeric_index * step + 1  // index into ships array
+```
+
+Array stride: 6 qwords (48 bytes) per slot. Confirmed in `sub_14045DC90` (the faction
+ship iterator): `v5 += 6 * a3 - 6` where `a3 = faction_numeric_index * step + 1`.
+
+The array is sized at XML load time based on the number of factions in the XML. There
+is no resize/grow path.
+
+### 12.4 Runtime Faction Activation (Pre-Defined Factions Only)
+
+The game has a native mechanism for toggling factions at runtime. DLC extensions use this
+to unlock factions when content is purchased.
+
+**`SetFactionActiveAction::Execute`** (`0x140B92AB0`) — MD action opcode `0x889`:
+```
+FactionData + 640 + 744  = active boolean (byte)
+sub_140996B00(faction_manager, faction_ptr)
+  → adds faction to each space's active-faction list (when activating)
+  → removes faction from each space's active-faction list (when deactivating)
+→ fires U::FactionActivatedEvent / U::FactionDeactivatedEvent
+```
+
+**`SetFactionIdentityAction::Execute`** (`0x140B91D80`) — MD action opcode `0x886`:
+```
+FactionData + 640 + {952, 984, 1016, 1048, ...}  = name/shortname/icon std::string fields
+→ patches strings in-place; no event fired
+```
+
+Both are MD script actions triggerable from an MD cue. The galaxy entity array bounds
+check in `sub_14045DC90` returns a null iterator (not a crash) for out-of-range indices —
+pre-defined XML factions have their index slot allocated at load time, so activation is safe.
+
+**Inactive factions** (`active="0"` in XML): zero overhead — not in any space's
+faction list, ignored by AI/economy/diplomacy until activated.
+
+### 12.5 Why Runtime Creation of a Brand-New Faction Is Infeasible
+
+To inject a faction not present in any loaded XML at runtime:
+
+1. BST insert: allocate `FactionData` + insert node — mechanically possible but risky
+2. **Numeric faction index**: must be `N+1` where N = number of XML-loaded factions.
+   The galaxy entity array was sized for N at load time; index N+1 exceeds bounds in
+   every pre-allocated faction-indexed table. No resize path exists.
+
+Extensions that need additional factions at runtime should pre-define them as inactive
+slots in a `libraries/factions.xml` diff patch (same pattern as split/boron/terran DLCs),
+then activate via the MD action path in §12.4.
+
+### 12.6 Extension Pattern: Pre-Defined Inactive Slots
+
+Define placeholder factions in an `extension/libraries/factions.xml` diff patch. They
+are fully registered at game start (numeric index allocated, BST node inserted) but
+invisible to AI/economy until activated via §12.4.
+
+```xml
+<!-- extension/libraries/factions.xml -->
+<diff>
+  <add sel="/factions">
+    <faction id="my_ext_faction1" name="[Placeholder 1]" active="0"
+             behaviourset="default" tags="claimspace" />
+  </add>
+</diff>
+```
+
+`isplayerowned` is an XML attribute baked into `FactionData` at load time — it is NOT a
+hardcoded `strcmp(id, "player")` check. Any faction can receive `isplayerowned="1"` by
+setting the attribute in its XML definition.
+
+**Renaming at runtime** — `set_faction_identity` full parameter set (all except `faction`
+are optional; confirmed from DLC boron/split usage):
+
+```xml
+<set_faction_identity
+  faction="faction.my_ext_faction1"
+  name="'My Group Name'"
+  shortname="'MGN'"
+  prefixname="'MGN'"
+  description="'Description text'"
+  spacename="'My Space'"
+  homespacename="'My Home Space'"
+  icon="'faction_player'" />
+```
+
+Name values are MD expressions — literal strings use single quotes (`'text'`), localization
+keys use `'{pageid,textid}'`, and cue-local variables use `$varname`. Dynamic runtime names
+(e.g. player-provided strings passed via signal param) use `event.param` or a variable set
+before the action fires.
+
+Typical MD cue pattern for extension-controlled activation:
+
+```xml
+<cue name="MyExt_ActivateFaction" instantiate="true">
+  <conditions>
+    <event_cue_signalled />
+  </conditions>
+  <actions>
+    <!-- Caller passes faction_id via event.param3, display name via event.param2 -->
+    <set_faction_identity faction="event.param3"
+                         name="event.param2"
+                         shortname="event.param" />
+    <set_faction_active   faction="event.param3" active="true" />
+  </actions>
+</cue>
+```
+
+Signal from C++ via `x4n::raise_lua("MyExt_ActivateFaction_signal", ...)` or from MD via
+`<signal_cue cue="MyExt_ActivateFaction" param="..." param2="..." param3="..." />`.
+
+### 12.7 Key Addresses
+
+| Address | Symbol | Notes |
+|---------|--------|-------|
+| `0x146C6BB88` | `g_faction_manager` | FactionManager global pointer |
+| `0x143C97858` | `g_galaxy_ptr` | Galaxy object indirect pointer (`+552` = galaxy) |
+| `0x1401_4D0D0` | `GetAllFactions` | Iterates BST via `sub_1402D5CF0` |
+| `0x1401_5E9F0` | `GetNumAllFactions` | Same iteration, count only |
+| `0x1401_4D1D0` | `GetAllFactionShips` | Uses `FactionData+560` numeric index |
+| `0x140AB10F0` | `GetFactionDetails` | FNV hash BST lookup; returns name/icon strings |
+| `0x140154EE0` | `GetFactionRepresentative` | Looks up faction agent in galaxy |
+| `0x1402D5CF0` | `sub_FactionBSTIter` | Builds ordered range from BST |
+| `0x14045DC90` | `sub_FactionShipIterInit` | Iterator init; bounds-checks numeric index (safe) |
+| `0x140B91D80` | `SetFactionIdentityAction::Execute` | Patches name/shortname/icon strings at runtime |
+| `0x140B92AB0` | `SetFactionActiveAction::Execute` | Toggles active bool; calls `sub_140996B00`; fires events |
+| `0x140996B00` | `sub_FactionActivationNotify` | Adds/removes faction from per-space faction lists |
+
 ---
 
 ## 11. Related Documents
