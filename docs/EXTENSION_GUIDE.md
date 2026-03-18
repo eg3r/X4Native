@@ -199,9 +199,10 @@ Each extension writes to its own log file inside its folder (`<name>.log` by def
 ```cpp
 // Default: logs to extensions/x4native_mymod/mymod.log
 x4n::log::debug("value = %d", 42);
-x4n::log::info("loaded %s", name);
+x4n::log::info("loaded v1.0");           // single string — always safe
+x4n::log::info("count = %d", count);    // int arg — always safe
 x4n::log::warn("something odd");
-x4n::log::error("failed: %s", reason);
+x4n::log::error("failed: %d", error_code);
 
 // Route one message to the shared x4native.log instead
 x4n::log::info("framework-level note", false);
@@ -223,9 +224,20 @@ The `logfile` field in `x4native.json` sets an alternative default filename at c
 }
 ```
 
-> **Note on the filename overload**: `info("text", "file.log")` treats the second argument as a filename, not a format argument. To log a `const char*` variable with format, use `info("value: %s", str)` rather than `info(str, other_str)`.
+> **Warning — `const char*` second argument is always a filename**: The compiler resolves `log::info(a, b)` to the filename overload whenever `b` is `const char*`, regardless of whether `a` contains `%s`. This is a C++ overload resolution rule: non-template functions beat templates on equal matches.
+>
+> ```cpp
+> // WRONG — "mypath" is treated as a filename, not a format arg:
+> x4n::log::info("path: %s", some_path.c_str());   // creates file named by some_path!
+>
+> // CORRECT — embed strings directly, or use a non-const-char* second arg:
+> x4n::log::info(("path: " + some_path).c_str());  // string concat, single arg
+> x4n::log::info("count: %d", some_int);           // int second arg — template wins
+> ```
+>
+> The `bool` and named-file overloads are unambiguous. The ambiguity only arises when the second argument is `const char*`.
 
-Uses printf-style formatting.
+Uses printf-style formatting for numeric and multi-argument calls.
 
 ### Game Functions
 
