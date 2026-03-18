@@ -58,6 +58,7 @@ Tells the framework where to find your DLL and how to load it:
 | `priority` | No | Load order (lower = earlier, default 0) |
 | `min_api_version` | No | Minimum framework API version required |
 | `autoreload` | No | `true` → watch DLL for changes and hot-reload in-place (default `false`) |
+| `logfile` | No | Log filename inside your extension folder (default `<name>.log`). Must be a relative path. |
 
 ## Minimal Extension
 
@@ -193,14 +194,38 @@ The full flow is: **Game Engine → MD cue → `raise_lua_event` → Lua bridge 
 
 ### Logging
 
+Each extension writes to its own log file inside its folder (`<name>.log` by default, rotated on each load — keeps `.1`–`.4` backups). No setup required; the framework opens the file before your `X4N_EXTENSION` body runs.
+
 ```cpp
+// Default: logs to extensions/x4native_mymod/mymod.log
 x4n::log::debug("value = %d", 42);
 x4n::log::info("loaded %s", name);
 x4n::log::warn("something odd");
 x4n::log::error("failed: %s", reason);
+
+// Route one message to the shared x4native.log instead
+x4n::log::info("framework-level note", false);
+
+// One-shot write to a named file inside the extension folder
+x4n::log::info("detailed trace", "verbose.log");
+
+// Redirect the extension's log to a different file (call during X4N_EXTENSION)
+x4n::log::set_log_file("mymod_v2.log");
 ```
 
-Output goes to `extensions/x4native/x4native.log`. Uses printf-style formatting.
+The `logfile` field in `x4native.json` sets an alternative default filename at config level (must be a relative path — resolved inside the extension folder):
+
+```json
+{
+    "name": "mymod",
+    "library": "native\\x4native_mymod.dll",
+    "logfile": "logs\\mymod.log"
+}
+```
+
+> **Note on the filename overload**: `info("text", "file.log")` treats the second argument as a filename, not a format argument. To log a `const char*` variable with format, use `info("value: %s", str)` rather than `info(str, other_str)`.
+
+Uses printf-style formatting.
 
 ### Game Functions
 

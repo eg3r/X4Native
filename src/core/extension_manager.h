@@ -33,6 +33,14 @@ struct ExtensionInfo {
     int         api_version = 0;
     bool        autoreload = false;  // true → watch dll_path for changes and hot-reload
 
+    // Per-extension log file.
+    // log_name: raw value from "log" field in x4native.json (empty = use <name>.log default)
+    // log_path: resolved absolute path (set in load_extension, may be updated by api_init_log)
+    // log_handle: open HANDLE to the current log file (INVALID_HANDLE_VALUE if not open)
+    std::string log_name;
+    std::string log_path;
+    HANDLE      log_handle = INVALID_HANDLE_VALUE;
+
     HMODULE     module = nullptr;
     bool        initialized = false;
     bool        reload_pending = false;  // set by tick(), consumed by flush_pending_reloads()

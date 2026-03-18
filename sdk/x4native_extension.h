@@ -158,10 +158,15 @@ typedef struct X4NativeAPI {
     // that aren't in X4.exe's export table.
     void* (*resolve_internal)(const char* name);
 
-    // Reserved for future ABI-compatible expansion.
-    // _reserved[0] = ext_name (const char*), _reserved[1] = ext_priority (intptr_t)
-    // _reserved[2] = subscription_ids (vector<int>*)
-    // -- set by framework, read by hook implementation. Do not modify.
+    // Framework-managed slots — do not modify.
+    // [0] const char*           ext name
+    // [1] intptr_t              ext load priority
+    // [2] vector<int>*          event subscription IDs (for auto-cleanup)
+    // [3] HANDLE                per-extension log file handle
+    // [4] fn(int,cstr,ptr)      api_log_ext:   write to extension's own log
+    // [5] fn(cstr,ptr)          api_init_log:  reinitialize log with a new filename
+    // [6] fn(int,cstr,cstr,ptr) api_log_named: one-shot write to a named file in ext folder
+    // [7] ExtensionInfo*        internal framework pointer (used by api_init_log)
     void* _reserved[20];
 } X4NativeAPI;
 

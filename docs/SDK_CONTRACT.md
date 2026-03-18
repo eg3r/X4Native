@@ -43,7 +43,7 @@ struct X4NativeAPI {
     void (*unsubscribe)(int subscription_id);
     void (*raise_event)(const char* event_name, void* data);
 
-    // Logging
+    // Logging (routes to global x4native.log; per-extension routing uses _reserved[4])
     void (*log)(int level, const char* message);
 
     // Info

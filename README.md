@@ -19,7 +19,7 @@ X4Native lets mod authors go beyond what Lua and Mission Director XML can do alo
 1. Download the latest release
 2. Extract into your X4 `extensions/` folder (e.g. `X4 Foundations/extensions/x4native/`)
 3. Disable **Protected UI mode** in game settings
-4. Launch the game — check `extensions/x4native/x4native.log` to verify
+4. Launch the game — check `extensions/x4native/x4native.log` to verify the framework loaded; each extension writes its own log to its extension folder
 
 Mods that depend on X4Native will list it as a requirement. Install them into `extensions/` alongside `x4native/` — the framework discovers and loads them automatically.
 

@@ -18,33 +18,25 @@ static constexpr const char* level_tag(LogLevel lv) {
     return "?";
 }
 
-static void rotate_logs(const std::string& mod_root) {
-    // Rotate: x4native.4.log is dropped, then 3→4, 2→3, 1→2, current→1
+HANDLE Logger::open_log(const std::string& log_path) {
     static constexpr int MAX_BACKUPS = 4;
-    std::string base = mod_root + "x4native";
+    std::string base = log_path;
+    if (base.size() >= 4 && base.compare(base.size() - 4, 4, ".log") == 0)
+        base.resize(base.size() - 4);
 
     DeleteFileA((base + ".4.log").c_str());
     for (int i = MAX_BACKUPS - 1; i >= 1; --i) {
-        std::string from = base + "." + std::to_string(i) + ".log";
-        std::string to   = base + "." + std::to_string(i + 1) + ".log";
-        MoveFileA(from.c_str(), to.c_str());
+        MoveFileA((base + "." + std::to_string(i) + ".log").c_str(),
+                  (base + "." + std::to_string(i + 1) + ".log").c_str());
     }
-    MoveFileA((base + ".log").c_str(), (base + ".1.log").c_str());
+    MoveFileA(log_path.c_str(), (base + ".1.log").c_str());
+
+    return CreateFileA(log_path.c_str(), GENERIC_WRITE, FILE_SHARE_READ,
+                       nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
 }
 
 void Logger::init(const std::string& mod_root) {
-    rotate_logs(mod_root);
-
-    std::string path = mod_root + "x4native.log";
-    s_handle = CreateFileA(
-        path.c_str(),
-        GENERIC_WRITE,
-        FILE_SHARE_READ,
-        nullptr,
-        CREATE_ALWAYS,
-        FILE_ATTRIBUTE_NORMAL,
-        nullptr);
-
+    s_handle = open_log(mod_root + "x4native.log");
     if (s_handle == INVALID_HANDLE_VALUE)
         OutputDebugStringA("X4Native: Failed to open log file\n");
 }
@@ -57,22 +49,29 @@ void Logger::shutdown() {
     }
 }
 
-void Logger::write(LogLevel level, std::string_view msg) {
+static void write_handle(std::mutex& mtx, HANDLE h, LogLevel level, std::string_view msg) {
     auto now = std::chrono::system_clock::now();
     auto line = std::format("[{:%Y-%m-%d %H:%M:%S}] [{}] {}\n", now, level_tag(level), msg);
 
     {
-        std::lock_guard lock(s_mutex);
-        if (s_handle != INVALID_HANDLE_VALUE) {
+        std::lock_guard lock(mtx);
+        if (h != INVALID_HANDLE_VALUE) {
             DWORD written;
-            WriteFile(s_handle, line.data(), static_cast<DWORD>(line.size()), &written, nullptr);
-            // Flush on info+ so important messages survive crashes
+            WriteFile(h, line.data(), static_cast<DWORD>(line.size()), &written, nullptr);
             if (level >= LogLevel::Info)
-                FlushFileBuffers(s_handle);
+                FlushFileBuffers(h);
         }
     }
 
     OutputDebugStringA(line.c_str());
+}
+
+void Logger::write(LogLevel level, std::string_view msg) {
+    write_handle(s_mutex, s_handle, level, msg);
+}
+
+void Logger::write_to(HANDLE h, LogLevel level, std::string_view msg) {
+    write_handle(s_mutex, h, level, msg);
 }
 
 } // namespace x4n

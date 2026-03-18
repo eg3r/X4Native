@@ -28,7 +28,16 @@ public:
     static void init(const std::string& mod_root);
     static void shutdown();
 
+    // Open (and rotate) a log file at an absolute path.
+    // Strips the .log suffix to form the backup base name, shifts .1-.4 backups,
+    // then creates a fresh file. Returns INVALID_HANDLE_VALUE on failure.
+    // Used by both the framework log and per-extension logs.
+    static HANDLE open_log(const std::string& log_path);
+
     static void write(LogLevel level, std::string_view msg);
+
+    // Write to an arbitrary HANDLE — used by per-extension log routing.
+    static void write_to(HANDLE h, LogLevel level, std::string_view msg);
 
     template<typename... Args>
     static void debug([[maybe_unused]] std::format_string<Args...> fmt, [[maybe_unused]] Args&&... args) {

@@ -132,4 +132,4 @@ When investigating game APIs, events, or behavior:
 - Event names use `on_` prefix: `on_game_loaded`, `on_game_saved`, `on_frame_update`
 - All DLL exports use `core_init`/`core_shutdown` (core) or `luaopen_x4native` (proxy) naming
 - Config files use JSON (`x4native.json` per extension) with flat `"library"` key for the DLL path
-- Log output goes to `<ext_root>/x4native.log` (truncated each run)
+- Framework log: `<ext_root>/x4native.log` (truncated each run, keeps .1–.4 backups). Each extension also gets its own log at `<ext_folder>/<name>.log` (or `"logfile"` field from `x4native.json`)

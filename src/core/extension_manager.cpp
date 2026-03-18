@@ -158,6 +158,9 @@ bool ExtensionManager::parse_config(const std::string& json_path, ExtensionInfo&
     info.dll_path = info.path + dll_rel;
 
     // Optional fields
+    if (cfg.contains("logfile") && cfg["logfile"].is_string())
+        info.log_name = cfg["logfile"].get<std::string>();
+
     if (cfg.contains("priority") && cfg["priority"].is_number_integer())
         info.priority = cfg["priority"].get<int>();
 
@@ -168,6 +171,88 @@ bool ExtensionManager::parse_config(const std::string& json_path, ExtensionInfo&
         info.autoreload = cfg["autoreload"].get<bool>();
 
     return true;
+}
+
+// ---------------------------------------------------------------------------
+// Per-extension log helpers
+// ---------------------------------------------------------------------------
+
+// api_log_ext — routes x4n::log::info/warn/etc. to the extension's own log file.
+// Falls back to the global framework log if the handle is not set.
+static void api_log_ext(int level, const char* message, void* api_ptr) {
+    auto lv = static_cast<x4n::LogLevel>(level);
+    if (api_ptr) {
+        auto* api = static_cast<X4NativeAPI*>(api_ptr);
+        HANDLE h = static_cast<HANDLE>(api->_reserved[3]);
+        if (h && h != INVALID_HANDLE_VALUE) {
+            x4n::Logger::write_to(h, lv, message);
+            return;
+        }
+    }
+    x4n::Logger::write(lv, message);
+}
+
+// api_init_log — called by x4n::log::init("filename") to change the extension's log file.
+// filename is relative to the extension folder (or absolute).
+static void api_init_log(const char* filename, void* api_ptr) {
+    if (!api_ptr) return;
+    auto* api  = static_cast<X4NativeAPI*>(api_ptr);
+    auto* ext  = static_cast<ExtensionInfo*>(api->_reserved[7]);
+    if (!ext) return;
+
+    // If called with no filename (or empty), keep the current log — no-op.
+    if (!filename || !filename[0]) return;
+
+    // Close old handle
+    HANDLE old_h = static_cast<HANDLE>(api->_reserved[3]);
+    if (old_h && old_h != INVALID_HANDLE_VALUE) {
+        FlushFileBuffers(old_h);
+        CloseHandle(old_h);
+    }
+
+    // Resolve path relative to extension folder
+    fs::path p(filename);
+    std::string new_path = p.is_absolute() ? filename : ext->path + filename;
+
+    HANDLE new_h = Logger::open_log(new_path);
+    if (new_h == INVALID_HANDLE_VALUE) {
+        OutputDebugStringA(("X4Native: failed to open extension log: " + new_path + "\n").c_str());
+        api->_reserved[3] = INVALID_HANDLE_VALUE;
+        ext->log_handle   = INVALID_HANDLE_VALUE;
+        return;
+    }
+
+    ext->log_handle   = new_h;
+    ext->log_path     = new_path;
+    api->_reserved[3] = new_h;
+    x4n::Logger::write_to(new_h, x4n::LogLevel::Info,
+                           "Extension log initialized: " + new_path);
+}
+
+// api_log_named — x4n::log::info("text", "extra.log"): one-shot write to a named file
+// in the extension's folder. Opens and closes the file each call (debug/trace use).
+static void api_log_named(int level, const char* message,
+                           const char* filename, void* api_ptr) {
+    if (!filename || !filename[0]) {
+        api_log_ext(level, message, api_ptr);
+        return;
+    }
+    const char* ext_path = "";
+    if (api_ptr)
+        ext_path = static_cast<X4NativeAPI*>(api_ptr)->extension_path;
+
+    fs::path p(filename);
+    std::string full = p.is_absolute() ? filename : std::string(ext_path) + filename;
+
+    // Append-open: no rotation for ad-hoc named writes
+    HANDLE h = CreateFileA(full.c_str(), GENERIC_WRITE | FILE_APPEND_DATA,
+                           FILE_SHARE_READ, nullptr, OPEN_ALWAYS,
+                           FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h != INVALID_HANDLE_VALUE) {
+        SetFilePointer(h, 0, nullptr, FILE_END);
+        x4n::Logger::write_to(h, static_cast<x4n::LogLevel>(level), message);
+        CloseHandle(h);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -272,6 +357,15 @@ ExtensionManager::LoadResult ExtensionManager::load_extension(ExtensionInfo& ext
         ext.module = nullptr;
         DeleteFileA(ext.dll_live_path.c_str());
         ext.dll_live_path.clear();
+        // Close per-extension log if it was already opened (log open happens after this
+        // lambda is defined, but ext.log_handle starts as INVALID_HANDLE_VALUE so early
+        // failure paths are safe — they simply skip the close)
+        if (ext.log_handle != INVALID_HANDLE_VALUE) {
+            FlushFileBuffers(ext.log_handle);
+            CloseHandle(ext.log_handle);
+            ext.log_handle = INVALID_HANDLE_VALUE;
+        }
+        ext.log_path.clear();
     };
 
     if (!ext.fn_api_version || !ext.fn_init || !ext.fn_shutdown) {
@@ -294,6 +388,28 @@ ExtensionManager::LoadResult ExtensionManager::load_extension(ExtensionInfo& ext
                       ext.name, ext_api, X4NATIVE_API_VERSION);
         unload_live();
         return LoadResult::failed;
+    }
+
+    // Open per-extension log file (rotate on load, same scheme as x4native.log)
+    {
+        if (ext.log_name.empty()) {
+            ext.log_path = ext.path + ext.name + ".log";
+        } else {
+            fs::path p(ext.log_name);
+            if (p.is_absolute()) {
+                Logger::warn("Extension '{}': 'logfile' must be a relative path — ignoring '{}', using default",
+                             ext.name, ext.log_name);
+                ext.log_path = ext.path + ext.name + ".log";
+            } else {
+                ext.log_path = ext.path + ext.log_name;
+            }
+        }
+        ext.log_handle = Logger::open_log(ext.log_path);
+        if (ext.log_handle == INVALID_HANDLE_VALUE)
+            Logger::warn("Extension '{}': could not open log at '{}'", ext.name, ext.log_path);
+        else
+            Logger::write_to(ext.log_handle, LogLevel::Info,
+                             "X4Native extension log — " + ext.name);
     }
 
     // Build the API struct for this extension (stored in ExtensionInfo,
@@ -341,6 +457,13 @@ void ExtensionManager::unload_extension(ExtensionInfo& ext) {
         DeleteFileA(ext.dll_live_path.c_str());
         ext.dll_live_path.clear();
     }
+    // Close per-extension log (after shutdown so the extension can log until the end)
+    if (ext.log_handle != INVALID_HANDLE_VALUE) {
+        FlushFileBuffers(ext.log_handle);
+        CloseHandle(ext.log_handle);
+        ext.log_handle = INVALID_HANDLE_VALUE;
+    }
+    ext.log_path.clear();  // reset so load_extension recomputes from log_name on hot-reload
 }
 
 // ---------------------------------------------------------------------------
@@ -501,10 +624,21 @@ void ExtensionManager::fill_api(X4NativeAPI& api, ExtensionInfo& ext) {
     api.resolve_internal     = api_resolve_internal;
     api.register_lua_bridge  = api_register_lua_bridge;
     memset(api._reserved, 0, sizeof(api._reserved));
-    // Store extension context in reserved slots (read by api_hook_before/after/subscribe)
+    // Slots [0-2]: extension context (read by hook/subscribe implementations)
     api._reserved[0] = const_cast<char*>(ext.name.c_str());
     api._reserved[1] = reinterpret_cast<void*>(static_cast<intptr_t>(ext.priority));
     api._reserved[2] = &ext.subscription_ids;
+    // Slots [3-7]: per-extension logging (used by x4native.h SDK log helpers)
+    //   [3] HANDLE          — current per-extension log file handle
+    //   [4] fn(int,str,ptr) — api_log_ext:   write to extension's own log
+    //   [5] fn(str,ptr)     — api_init_log:  reinitialize log with a new filename
+    //   [6] fn(int,str,str,ptr) — api_log_named: one-shot write to a named file
+    //   [7] ExtensionInfo*  — framework pointer (used by api_init_log)
+    api._reserved[3] = ext.log_handle;
+    api._reserved[4] = reinterpret_cast<void*>(api_log_ext);
+    api._reserved[5] = reinterpret_cast<void*>(api_init_log);
+    api._reserved[6] = reinterpret_cast<void*>(api_log_named);
+    api._reserved[7] = &ext;
 }
 
 // ---------------------------------------------------------------------------

@@ -170,41 +170,119 @@ inline const char* path() { return detail::g_api->extension_path; }
 
 // ---------------------------------------------------------------------------
 // Logging — x4n::log::info("format %s", arg), etc.
+//
+// Default target:  per-extension log file (<ext_folder>/<name>.log).
+//                  Opened by the framework at load time — no setup needed.
+//
+// Overloads:
+//   info("text", false)        — route this message to the global x4native.log
+//   info("text", true)         — same as info("text") — explicit default
+//   info("text", "extra.log")  — one-shot write to a named file in the ext folder
+//                                NOTE: second arg is a filename, not a format arg.
+//                                Use info("fmt %s", str) for formatted string args.
+//
+// set_log_file("custom.log")   — reopen the extension's log under a new filename
+//                                (relative paths resolve inside the extension folder)
 // ---------------------------------------------------------------------------
 namespace log {
 namespace detail {
 
+    // Write a formatted message to the extension's own log (via _reserved[4]).
+    // Falls back to the global framework log if the slot is not populated.
     template<typename... Args>
     inline void write(int level, const char* fmt, Args... args) {
-        if constexpr (sizeof...(args) == 0) {
-            ::x4n::detail::g_api->log(level, fmt);
-        } else {
-            char buf[1024];
+        char buf[1024];
+        const char* msg = fmt;
+        if constexpr (sizeof...(args) > 0) {
             snprintf(buf, sizeof(buf), fmt, args...);
-            ::x4n::detail::g_api->log(level, buf);
+            msg = buf;
         }
+        auto* api = ::x4n::detail::g_api;
+        auto  fn  = reinterpret_cast<void(*)(int, const char*, void*)>(api->_reserved[4]);
+        if (fn) fn(level, msg, api);
+        else    api->log(level, msg);
+    }
+
+    // Write directly to the global x4native.log (bypasses per-extension file).
+    inline void write_global(int level, const char* msg) {
+        ::x4n::detail::g_api->log(level, msg);
+    }
+
+    // Write to a named file in the extension's folder (one-shot, via _reserved[6]).
+    inline void write_named(int level, const char* msg, const char* filename) {
+        auto* api = ::x4n::detail::g_api;
+        auto  fn  = reinterpret_cast<void(*)(int, const char*, const char*, void*)>(
+                        api->_reserved[6]);
+        if (fn) fn(level, msg, filename, api);
+        else    write(level, msg);
     }
 
 } // namespace detail
 
+// Redirect all subsequent log calls to a different file inside the extension folder.
+// Closes the current log, rotates it, and opens the new one.
+// Relative paths are resolved against the extension folder; absolute paths are used as-is.
+inline void set_log_file(const char* filename) {
+    auto* api = ::x4n::detail::g_api;
+    auto  fn  = reinterpret_cast<void(*)(const char*, void*)>(api->_reserved[5]);
+    if (fn) fn(filename, api);
+}
+
+// ---------------------------------------------------------------------------
+// debug / info / warn / error
+//
+// Three call forms per level:
+//   level("fmt", args...)          — format + args → extension's own log
+//   level("text", bool)            — bool false → global log; true → extension log
+//   level("text", "filename")      — one-shot write to named file in ext folder
+// ---------------------------------------------------------------------------
+
 template<typename... Args>
 inline void debug(const char* fmt, Args... args) {
     detail::write(X4NATIVE_LOG_DEBUG, fmt, args...);
+}
+inline void debug(const char* msg, bool to_ext_log) {
+    if (to_ext_log) detail::write(X4NATIVE_LOG_DEBUG, msg);
+    else            detail::write_global(X4NATIVE_LOG_DEBUG, msg);
+}
+inline void debug(const char* msg, const char* filename) {
+    detail::write_named(X4NATIVE_LOG_DEBUG, msg, filename);
 }
 
 template<typename... Args>
 inline void info(const char* fmt, Args... args) {
     detail::write(X4NATIVE_LOG_INFO, fmt, args...);
 }
+inline void info(const char* msg, bool to_ext_log) {
+    if (to_ext_log) detail::write(X4NATIVE_LOG_INFO, msg);
+    else            detail::write_global(X4NATIVE_LOG_INFO, msg);
+}
+inline void info(const char* msg, const char* filename) {
+    detail::write_named(X4NATIVE_LOG_INFO, msg, filename);
+}
 
 template<typename... Args>
 inline void warn(const char* fmt, Args... args) {
     detail::write(X4NATIVE_LOG_WARN, fmt, args...);
 }
+inline void warn(const char* msg, bool to_ext_log) {
+    if (to_ext_log) detail::write(X4NATIVE_LOG_WARN, msg);
+    else            detail::write_global(X4NATIVE_LOG_WARN, msg);
+}
+inline void warn(const char* msg, const char* filename) {
+    detail::write_named(X4NATIVE_LOG_WARN, msg, filename);
+}
 
 template<typename... Args>
 inline void error(const char* fmt, Args... args) {
     detail::write(X4NATIVE_LOG_ERROR, fmt, args...);
+}
+inline void error(const char* msg, bool to_ext_log) {
+    if (to_ext_log) detail::write(X4NATIVE_LOG_ERROR, msg);
+    else            detail::write_global(X4NATIVE_LOG_ERROR, msg);
+}
+inline void error(const char* msg, const char* filename) {
+    detail::write_named(X4NATIVE_LOG_ERROR, msg, filename);
 }
 
 } // namespace log

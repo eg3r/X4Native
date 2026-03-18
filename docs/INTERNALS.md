@@ -196,7 +196,7 @@ __try {
 
 Two sinks, no external dependencies:
 
-- **File sink:** `<mod_root>/x4native.log`, thread-safe via `std::mutex`, flush on `Info+` (survives crashes)
+- **File sink:** two files — framework log at `<mod_root>/x4native.log`, and one per-extension log at `<ext_folder>/<name>.log` (or `"logfile"` field from `x4native.json`). Thread-safe via `std::mutex`, flush on `Info+` (survives crashes).
 - **Debug sink:** `OutputDebugStringA` (visible in debugger / DebugView)
 
 Format uses `std::format` (C++23) with timestamps.

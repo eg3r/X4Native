@@ -175,7 +175,7 @@ Exports `core_init()` and `core_shutdown()`. Contains all subsystems:
 
 | Subsystem | Responsibility |
 |-----------|---------------|
-| Logger | Win32 file sink + `OutputDebugStringA`, crash-safe flush |
+| Logger | Win32 file sink (framework log + per-extension logs) + `OutputDebugStringA`, crash-safe flush |
 | Event System | Thread-safe pub/sub bus |
 | Game API | `GetProcAddress`-based resolver for 2,051 game functions |
 | Extension Manager | Discovery, loading, lifecycle, API filling |

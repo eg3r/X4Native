@@ -53,9 +53,6 @@ void EventSystem::fire(const char* event_name, void* data) {
         snapshot = it->second;
     }
 
-    Logger::debug("Event '{}': dispatching to {} subscriber(s)",
-                  event_name, snapshot.size());
-
     for (auto& sub : snapshot) {
         sub.callback(event_name, data, sub.userdata);
     }
