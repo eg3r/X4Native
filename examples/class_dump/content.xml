@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<content version="900" id="x4native_class_dump" name="X4Native Class Dump" description="One-shot research tool: dumps the full entity class registry (name + numeric ID) to CSV files on game load. Disable after first run." author="eg3r" date="2026-03-19" save="0" enabled="1">
+  <dependency id="x4native" optional="false" />
+  <text language="44" description="One-shot research tool: dumps the full entity class registry (name + numeric ID) to CSV files on game load. Disable after first run." name="X4Native Class Dump"/>
+</content>

@@ -652,6 +652,206 @@ Signal from C++ via `x4n::raise_lua("MyExt_ActivateFaction_signal", ...)` or fro
 
 ---
 
+## 13. Entity Class System — On-Foot / Player Entity Layout
+
+### 13.1 Virtual Class Check
+
+X4's entity component system uses a virtual function at two vtable offsets for hierarchical class membership testing:
+
+| Vtable Offset | Used by | Semantics |
+|--------------|---------|-----------|
+| `+4528` (index 566) | Lookup on registered entity (from ID registry) | Exact / self-class check |
+| `+4536` (index 567) | Walk on physics sub-object `entity[+112]` | Parent-chain class check |
+
+Both return `bool` (non-zero = is member of that class). The class system uses numeric IDs resolved from string names via a sorted BST table (`sub_1402D4130` @ `0x1402D4130`).
+
+### 13.2 Complete Class ID Table
+
+Source: `GetComponentClassMatrix()` runtime dump via `x4native_class_dump` example extension.
+IDs confirmed against IDA decompile constants (previously known IDs all match).
+
+**Note on ID 119:** Not a registered class. `sub_1402D4130` (the class name→ID BST resolver) returns 119 as an out-of-range sentinel when the input string is not found. Do not pass 119 to any class-check function.
+
+**Registration order note:** IDs 0–107 are concrete/leaf classes registered in the first pass. IDs 108–118 are abstract hierarchy classes (the ones most commonly used with `GetContextByClass`) registered in a second pass.
+
+Classes used in our code or IDA findings are **bold**.
+
+| ID | Name | Notes |
+|----|------|-------|
+| 0 | `accessory` | |
+| 1 | `adsign` | |
+| 2 | `adsignobject` | |
+| 3 | `anomaly` | |
+| 4 | `asteroid` | |
+| 5 | `attachment` | |
+| 6 | `bomb` | |
+| 7 | `bomblauncher` | |
+| 8 | `buildstorage` | |
+| 9 | `buildmodule` | |
+| 10 | `buildprocessor` | |
+| 11 | `bullet` | |
+| 12 | `cargobay` | |
+| 13 | `celestialbody` | |
+| 14 | `checkpoint` | |
+| 15 | `cluster` | |
+| 16 | `cockpit` | |
+| 17 | `collectableshieldrestore` | |
+| 18 | `collectableammo` | |
+| 19 | `collectableblueprints` | |
+| 20 | `collectablewares` | |
+| 21 | `component` | Base component type |
+| 22 | `computer` | |
+| 23 | `connectionmodule` | |
+| 24 | `controlroom` | |
+| 25 | `countermeasure` | |
+| 26 | `crate` | |
+| 27 | `crate_l` | |
+| 28 | `crate_m` | |
+| 29 | `crate_s` | |
+| 30 | `crystal` | |
+| 31 | `cutsceneanchor` | |
+| 32 | `datavault` | |
+| 33 | `defencemodule` | |
+| 34 | `defensible` | Has hull/shields |
+| 35 | `destructible` | Can be destroyed |
+| 36 | `detector` | |
+| 37 | `dismantleprocessor` | |
+| 38 | `dockarea` | |
+| 39 | `dockingbay` | |
+| 40 | `drop` | |
+| 41 | `effectobject` | |
+| 42 | `engine` | |
+| 43 | `entity` | |
+| 44 | `forceemitter` | |
+| 45 | `fogvolume` | |
+| 46 | `galaxy` | |
+| 47 | `gate` | |
+| 48 | `habitation` | |
+| 49 | `hackerprobe` | |
+| 50 | `highway` | |
+| 51 | `highwayblocker` | |
+| 52 | `highwaybooster` | |
+| 53 | `highwayentrygate` | |
+| 54 | `highwayexitgate` | |
+| 55 | `highwayscene` | |
+| 56 | `highwaytrigger` | |
+| 57 | `holomap` | |
+| 58 | `influenceobject` | |
+| 59 | `lensflare` | |
+| 60 | `lock` | |
+| 61 | `lockbox` | |
+| 62 | `mine` | |
+| 63 | `miningnode` | |
+| 64 | `missile` | |
+| 65 | `missilelauncher` | |
+| 66 | `missileturret` | |
+| 67 | `moon` | |
+| 68 | `navbeacon` | |
+| 69 | `navcontext` | |
+| 70 | `npc` | On-foot NPC character (SpawnObjectAtPos2 proxy target) |
+| **71** | **`object`** | **Base class for all placed 3D entities — required by GetObjectPositionInSector and SetObjectSectorPos** |
+| 72 | `pier` | |
+| 73 | `planet` | |
+| 74 | `player` | |
+| 75 | `positional` | |
+| 76 | `processingmodule` | |
+| 77 | `production` | |
+| 78 | `radar` | |
+| 79 | `recyclable` | |
+| 80 | `region` | |
+| 81 | `resourceprobe` | |
+| **82** | **`room`** | **Walkable interior room — used in GetEnvironmentObject / WalkUpdate** |
+| 83 | `satellite` | |
+| 84 | `scanner` | |
+| 85 | `scene` | |
+| **86** | **`sector`** | **Sector — target of GetContextByClass for position resolution** |
+| 87 | `shieldgenerator` | |
+| 88 | `ship_xs` | Extra-small ship subclass |
+| 89 | `ship_s` | Small ship subclass |
+| 90 | `ship_m` | Medium ship subclass |
+| 91 | `ship_l` | Large ship subclass |
+| 92 | `ship_xl` | Extra-large ship subclass |
+| 93 | `signalleak` | |
+| 94 | `spacesuit` | |
+| 95 | `stardust` | |
+| **96** | **`station`** | **Station entity — previously unknown; confirmed here** |
+| 97 | `storage` | |
+| 98 | `sun` | |
+| 99 | `switchable` | |
+| 100 | `targetpoint` | |
+| 101 | `textdisplay` | |
+| 102 | `turret` | |
+| 103 | `uielement` | |
+| 104 | `ventureplatform` | |
+| 105 | `weapon` | |
+| 106 | `welfaremodule` | |
+| **107** | **`zone`** | **Physics zone / movable space subdivision — walked by SetObjectSectorPos** |
+| 108 | `collectable` | Abstract: collectables |
+| **109** | **`container`** | **Abstract: stations and ships that contain other entities** |
+| **110** | **`controllable`** | **Abstract: entities that accept orders / can be piloted** |
+| 111 | `explosive` | Abstract: bombs, missiles |
+| 112 | `launcher` | Abstract: weapon launchers |
+| 113 | `module` | Abstract: station modules |
+| 114 | `nonplayer` | Abstract: non-player entities |
+| **115** | **`ship`** | **Abstract ship class** |
+| 116 | `space` | Abstract: space containers |
+| 117 | `triggerobject` | Abstract: trigger volumes |
+| 118 | `walkablemodule` | Abstract: station modules with walkable interiors |
+| _(119)_ | _(sentinel)_ | Not registered — returned by BST resolver when class name not found |
+
+### 13.3 Player Slot Layout
+
+The player slot is the per-player data structure accessed via `qword_143C9FA58 + 560`:
+
+| Offset | Contents | Access function |
+|--------|----------|----------------|
+| `+0` | Player slot pointer (qword) | — |
+| `+8` | Player actor game_id (uint64) | `GetPlayerID()` |
+| `+112` | Ptr to current physical entity (ship in cockpit, avatar on-foot) | `GetPlayerObjectID()`, `GetPlayerContainerID()`, `GetPlayerZoneID()` |
+| `+27316` | Ship activity enum (int): 1=travel, 2=longrangescan, 3=scan, 4=seta; 0 when on-foot | `GetPlayerActivity()` Lua wrapper |
+| `+29496` | Cached room entity pointer | `GetEnvironmentObject()` |
+
+### 13.4 Key Player Functions
+
+| Function | Address | Method |
+|----------|---------|--------|
+| `GetPlayerID` | `0x14016b040` | Returns `player_slot[+8]` — player actor ID |
+| `GetPlayerObjectID` | `0x14016b400` | Walks `player_slot[+112]` for class 71 — use for `GetObjectPositionInSector` |
+| `GetPlayerContainerID` | `0x14016ae60` | Walks `player_slot[+112]` for class 109 (container) |
+| `GetPlayerZoneID` | `0x14016bb40` | Walks `player_slot[+112]` for class 107 (zone) |
+| `GetPlayerOccupiedShipID` | `0x140abb7b0` | Calls helper to find class 115 (ship) in chain |
+| `GetEnvironmentObject` | `0x140ab2e10` | Returns `player->data[+29496]` (cached room entity) |
+| `GetObjectPositionInSector` | `0x1401691c0` | Requires class 71 on entity; walks `entity[+112]` for class 86 (sector) |
+| `SetObjectSectorPos` | `0x14017f630` | Requires class 71 on entity; walks `entity[+112]` for class 107 (zone) |
+| `GetContextByClass` | `0x1401519e0` | Generic parent-chain walk. With `includeSelf=false`: skips entity, starts at `entity[+112]` |
+
+### 13.5 On-Foot Detection Pattern
+
+```cpp
+// Correct on-foot detection:
+bool is_on_foot = (g->GetPlayerOccupiedShipID() == 0) &&  // not in cockpit
+                  (g->GetPlayerContainerID() != 0);         // inside container
+
+// Correct on-foot position read:
+UniverseID avatar = g->GetPlayerObjectID();  // NOT GetPlayerID() — GetPlayerObjectID ensures class 71
+UIPosRot pos = g->GetObjectPositionInSector(avatar);  // returns sector-space coordinates
+
+// Room identification:
+UniverseID room = g->GetEnvironmentObject();  // stable cached field, 0 when not on-foot
+```
+
+### 13.6 Proxy NPC Spawning
+
+`CreateNPCFromPerson` (@ `0x1401b99e0`) CANNOT be used for arbitrary proxy NPC spawning — it requires a pre-existing `NPCSeed` in the target controllable's person list (`controllable->person_list[135..136]`).
+
+**Correct approach:** `SpawnObjectAtPos2(macro, sector, pos, owner_faction)`:
+- Works with any character macro: `character_default_macro`, `character_npc_player_*_macro` (from `character_macros.xml`)
+- Created entity has class 71 (base object) — compatible with `SetObjectSectorPos`
+- Entity registered in global component system — visible to all entity queries
+- `SetObjectSectorPos` then drives per-frame position updates (class 71 check passes, zone walk succeeds)
+
+---
+
 ## 11. Related Documents
 
 | Document | Contents |

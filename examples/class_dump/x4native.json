@@ -1,0 +1,7 @@
+{
+    "name": "class_dump",
+    "library": "native\\x4native_class_dump.dll",
+    "priority": 100,
+    "min_api_version": 1,
+    "autoreload": true
+}
