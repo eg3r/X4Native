@@ -269,6 +269,39 @@ The engine is NOT called directly from code — it's called **only via vtable di
 
 No direct `call` instructions target this function — confirming it's purely a virtual dispatch target.
 
+### Lua Global Function Registration Table
+
+**Address:** `sub_140236710` — 15,705 bytes (0x3D59), the largest function in the Lua registration path.
+
+This function registers ALL bare Lua globals (`GetPlayerRoom`, `SetOrderParam`, etc.) by mapping them to native C handler functions. The repeating pattern:
+
+```asm
+lea rdx, sub_XXXXXXXX       ; native C handler function pointer
+xor r8d, r8d                ; upvalue count = 0
+call lua_pushcclosure        ; push C closure onto Lua stack
+mov rcx, cs:qword_1438731E0 ; Lua state global
+lea r8, aFunctionName       ; "FunctionName" string literal
+mov edx, 0FFFFD8EEh         ; stack index (relative)
+call lua_setfield            ; register as global in Lua state
+```
+
+**Lua state global:** `qword_1438731E0` — pointer to the Lua VM state.
+
+**How to find any Lua global's native handler:**
+1. Search for the function name string (e.g., `find string "GetPlayerRoom"`)
+2. Get the string address
+3. Find xrefs to that string — should be in `sub_140236710`
+4. Look 2 instructions before the `lua_setfield` call for `lea rdx, sub_XXXXXXXX` — that's the native handler
+
+**Known mappings discovered via this table:**
+
+| Lua Name | Native Handler | Notes |
+|----------|---------------|-------|
+| `GetPlayerRoom` | `sub_14024D880` | Class 82 parent chain walk |
+| `SetOrderParam` | `sub_1402885C0` | 298 insns, Lua-only (no C++ callers) |
+| `RemoveOrderListParam` | `sub_140288A40` | Order parameter removal |
+| `TransferPlayerMoneyTo` | `sub_14024D950` | Money transfer handler |
+
 ### Ownership
 
 ```mermaid
@@ -768,7 +801,7 @@ Classes used in our code or IDA findings are **bold**.
 | 31 | `cutsceneanchor` | |
 | 32 | `datavault` | |
 | 33 | `defencemodule` | |
-| 34 | `defensible` | Has hull/shields |
+| 34 | `defensible` | Has hull/shields. Checked via vtable+4528. Hull reader: `sub_14011BBF0` (21 callers). Shield reader: `sub_1404E0990` (9 callers). Read by `GetComponentDetails` @ `0x140AB1E80` (hull_pct at result+8, shield_pct at result+12). No SetHull/SetShield API exists. |
 | 35 | `destructible` | Can be destroyed |
 | 36 | `detector` | |
 | 37 | `dismantleprocessor` | |
