@@ -424,9 +424,13 @@ int luaopen_x4native(lua_State* L) {
 
         g_initialized = true;
     } else {
-        // --- /reloadui: proxy already loaded, update lua_State ---
+        // --- /reloadui or save load: proxy already loaded, update lua_State ---
         if (g_dispatch.set_lua_state)
             g_dispatch.set_lua_state(L);
+
+        // Clear bridge cache — the old Lua state (and its RegisterEvent handlers)
+        // is gone; bridges must re-register on the new state.
+        g_lua_bridges.clear();
 
         // Hot-reload core if a newer build is on disk
         if (core_needs_reload())
