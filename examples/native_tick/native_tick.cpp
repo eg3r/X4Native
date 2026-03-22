@@ -7,7 +7,9 @@
 //   - Calling safe read-only game functions from the tick callback
 //   - Periodic logging with frame timing data
 // ---------------------------------------------------------------------------
-#include <x4native.h>
+#include <x4n_core.h>
+#include <x4n_events.h>
+#include <x4n_log.h>
 
 static int g_sub_tick   = 0;
 static int g_sub_loaded = 0;

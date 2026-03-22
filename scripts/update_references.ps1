@@ -58,7 +58,8 @@ param(
     [switch]$SkipExports,
     [switch]$SkipFFI,
     [switch]$SkipHeaders,
-    [switch]$SkipVersionDb
+    [switch]$SkipVersionDb,
+    [switch]$SkipGameData
 )
 
 $ErrorActionPreference = 'Stop'
@@ -185,6 +186,7 @@ if (-not $SkipExports)   { $steps += 'exports' }
 if (-not $SkipFFI)       { $steps += 'ffi' }
 if (-not $SkipHeaders)   { $steps += 'headers' }
 if (-not $SkipVersionDb) { $steps += 'version_db' }
+if (-not $SkipGameData)  { $steps += 'game_data' }
 
 if ($steps.Count -eq 0) {
     Write-Host "All steps skipped. Nothing to do." -ForegroundColor Yellow
@@ -284,6 +286,22 @@ if ($steps -contains 'version_db') {
     & "$PSScriptRoot\generate_version_db.ps1" @vdbArgs
     if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
         Write-Error "generate_version_db.ps1 failed"
+        exit 1
+    }
+    Write-Host ""
+}
+
+# ---------------------------------------------------------------------------
+# Step 6: Generate game data lookup tables
+# ---------------------------------------------------------------------------
+if ($steps -contains 'game_data') {
+    $stepNum++
+    Write-Host "[$stepNum/$totalSteps] Generating game data tables..." -ForegroundColor Cyan
+    Write-Host "------------------------------------------------------------"
+
+    & "$PSScriptRoot\generate_game_data.ps1"
+    if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+        Write-Error "generate_game_data.ps1 failed"
         exit 1
     }
     Write-Host ""

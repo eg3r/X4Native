@@ -8,7 +8,9 @@
 //   - Raising C++→C++ events via raise_event
 //   - Unsubscribing from events
 // ---------------------------------------------------------------------------
-#include <x4native.h>
+#include <x4n_core.h>
+#include <x4n_events.h>
+#include <x4n_log.h>
 
 // Subscription handles
 static int g_sub_loaded   = 0;

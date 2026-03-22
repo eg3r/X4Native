@@ -35,6 +35,7 @@ All paths are auto-detected. Override with `-GameDir`, `-ToolDir`, or `-DumpbinP
 | `-SkipExports` | — | Skip PE export extraction |
 | `-SkipFFI` | — | Skip FFI extraction |
 | `-SkipHeaders` | — | Skip C header generation |
+| `-SkipGameData` | — | Skip game data table generation |
 
 ### Pipeline Output
 
@@ -47,6 +48,7 @@ All paths are auto-detected. Override with `-GameDir`, `-ToolDir`, or `-DumpbinP
 | FFI parsing | `reference/x4_ffi_summary.txt` | Cross-reference statistics |
 | Headers | `sdk/x4_game_types.h` | Struct/typedef definitions (dependency-ordered) |
 | Headers | `sdk/x4_game_functions.h` | Function declarations + untyped export comments |
+| Game data | `extension/ui/x4n_game_data.lua` | Room macro/type tables + lookup functions (Lua) |
 
 ---
 
@@ -110,6 +112,28 @@ Parses `reference/x4_ffi_raw.txt` to extract types and function signatures, cros
 Filters out 25 LuaJIT-internal structs (PE/ELF/Mach-O parser types). Applies fixups for C++ reserved words (`bool default` → `bool defaultorder`) and normalizes empty parameter lists `()` → `(void)`.
 
 Requires `extract_ffi.ps1` and `extract_exports.ps1` to have been run first.
+
+---
+
+## generate_game_data.ps1
+
+Parses `reference/game/libraries/` XML files and `sdk/x4_manual_types.h` to generate game data lookup tables:
+
+- `extension/ui/x4n_game_data.lua` — Lua tables for room macro/type lookups + convenience functions
+
+### What it generates
+
+| Table (Lua) | Description |
+|---|---|
+| `x4n_ROOM_MACRO_TO_TYPE` | Room macro name -> roomtype string (e.g. `room_gen_bar_01_macro` -> `bar`) |
+| `x4n_CORRIDOR_MACROS` | Set of known corridor macros |
+| `x4n_ROOMTYPE_INDEX` | Roomtype string -> enum index (from `X4RoomType` in `x4_manual_types.h`) |
+| `x4n_is_corridor(macro)` | Exact match + substring fallback for corridor detection |
+| `x4n_lookup_room(macro)` | Returns `roomtype, index` with exact match + substring fallback |
+
+Parses rooms.xml + roomgroups.xml (base game + all DLCs). Cross-references with `common.xsd` for drift detection. Reads the `X4RoomType` enum from `x4_manual_types.h` as the single source of truth for roomtype indices.
+
+Requires `extract_game_files.ps1` and `generate_headers.ps1` to have been run first (needs `reference/game/` and `sdk/x4_manual_types.h`).
 
 ---
 

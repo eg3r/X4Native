@@ -80,6 +80,30 @@ X4N_SHUTDOWN {
 
 `X4N_EXTENSION` runs when the framework loads your DLL. `X4N_SHUTDOWN` runs on unload. The framework auto-cleans event subscriptions and hooks on shutdown, but explicit cleanup is good practice.
 
+### Selective Includes
+
+`x4native.h` is a convenience umbrella that pulls in the entire SDK. For faster compiles or minimal extensions, include only what you need:
+
+```cpp
+#include <x4n_core.h>        // x4n::game(), exe_base(), X4N_EXTENSION/X4N_SHUTDOWN macros
+#include <x4n_events.h>      // x4n::on/off/raise/bridge_lua_event
+#include <x4n_log.h>         // x4n::log::info/warn/error/debug
+#include <x4n_stash.h>       // x4n::stash::set/get (survives /reloadui)
+#include <x4n_game_utils.h>  // x4n::find_component, advance_seed, roomtype_name
+#include <x4n_hooks.h>       // x4n::hook::before/after/remove
+```
+
+Every sub-header is self-contained (includes `x4n_core.h` automatically). An events-only extension:
+
+```cpp
+#include <x4n_core.h>
+#include <x4n_events.h>
+
+X4N_EXTENSION {
+    x4n::on("on_game_loaded", [] { /* ... */ });
+}
+```
+
 ## CMakeLists.txt
 
 ```cmake
@@ -105,7 +129,7 @@ Build: `cmake -B build -G "Visual Studio 17 2022" -A x64 && cmake --build build 
 
 ## API Reference
 
-All API functions live in the `x4n::` namespace. Include `<x4native.h>`.
+All API functions live in the `x4n::` namespace. Include `<x4native.h>` for everything, or individual `<x4n_*.h>` headers for selective access.
 
 ### Lifecycle Events
 
@@ -296,6 +320,22 @@ x4n::game_version();  // "9.00"
 x4n::version();       // "0.9.0 (game: 9.00)"
 x4n::path();          // "G:\...\extensions\x4native_mymod\"
 ```
+### Game Utilities
+
+Higher-level helpers for common game operations (include `<x4n_game_utils.h>` or `<x4native.h>`):
+
+```cpp
+// Resolve a UniverseID to its Object* via the component registry.
+// Returns nullptr if the ID is invalid. Only call after on_game_loaded.
+void* obj = x4n::find_component(entity_id);
+
+// Advance a seed using the game's LCG formula (same as MD autoadvanceseed).
+uint64_t next = x4n::advance_seed(seed);
+
+// Convert X4RoomType enum to its string name.
+const char* name = x4n::roomtype_name(X4_ROOMTYPE_BAR);  // "bar"
+```
+
 ### Stash (Reload-Safe In-Memory Storage)
 
 The framework provides an in-memory key-value store called **stash** that lives in the proxy DLL. It survives `/reloadui` and extension hot-reload, but is lost on game exit.

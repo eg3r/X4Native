@@ -5,7 +5,9 @@
 // system, then subscribes to those C++ events with x4n::on().
 // No Lua code needed — bridges are registered entirely from C++.
 // ---------------------------------------------------------------------------
-#include <x4native.h>
+#include <x4n_core.h>
+#include <x4n_events.h>
+#include <x4n_log.h>
 
 static void on_undocked(const char* param) {
     x4n::log::info("lua_bridge: player undocked (param: %s)", param ? param : "none");

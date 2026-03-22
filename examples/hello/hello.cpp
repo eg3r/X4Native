@@ -7,7 +7,9 @@
 //   x4n::log::info("text", "f.log")  → named file in extension folder
 //   x4n::log::set_log_file("f.log")  → redirect default to a different file
 // ---------------------------------------------------------------------------
-#include <x4native.h>
+#include <x4n_core.h>
+#include <x4n_events.h>
+#include <x4n_log.h>
 
 static X4GameFunctions* game = nullptr;
 static int g_sub_loaded = 0;

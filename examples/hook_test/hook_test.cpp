@@ -1,7 +1,10 @@
 // ---------------------------------------------------------------------------
 // x4native_hook_test — Sample extension demonstrating game function hooks
 // ---------------------------------------------------------------------------
-#include <x4native.h>
+#include <x4n_core.h>
+#include <x4n_events.h>
+#include <x4n_log.h>
+#include <x4n_hooks.h>
 
 static int g_before_hook = 0;
 static int g_after_hook  = 0;

@@ -2,7 +2,7 @@
 
 ## Internal C ABI
 
-Extensions interact through `x4native.h` (the C++ namespace API), which wraps a flat C ABI that crosses DLL boundaries safely. Extension developers never use this layer directly.
+Extensions interact through the `x4n::` namespace API, which wraps a flat C ABI that crosses DLL boundaries safely. The SDK is split into focused headers — `x4n_core.h` (detail, game API, lifecycle macros), `x4n_events.h`, `x4n_log.h`, `x4n_stash.h`, `x4n_game_utils.h`, `x4n_hooks.h` — each self-contained. `x4native.h` is a convenience umbrella that includes all of them. Extension developers never use the C ABI layer directly.
 
 ### Required Exports
 

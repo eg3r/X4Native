@@ -20,7 +20,9 @@
 //   x4n::log prepends a timestamp to every line, which would require stripping
 //   before the CSV can be used. std::ofstream gives clean, undecorated output.
 // ---------------------------------------------------------------------------
-#include <x4native.h>
+#include <x4n_core.h>
+#include <x4n_events.h>
+#include <x4n_log.h>
 #include <fstream>
 #include <set>
 #include <string>
