@@ -103,12 +103,80 @@ typedef enum X4RoomType {
 #define X4_COMPONENT_OFFSET_RAW_SEED       0x08   /* uint64 — raw generation seed */
 #define X4_COMPONENT_OFFSET_COMBINED_SEED  0x3C0  /* int64  — raw_seed + session_seed (= MD $Station.seed) */
 
+// ---- MacroData field offsets ----
+// Returned by MacroRegistry_Lookup. Connection array is sorted by FNV-1a hash.
+// WARNING: struct offsets — fragile across builds. Re-verify on game updates.
+// Verified: v9.00 build 600626
+#define X4_MACRODATA_OFFSET_CONNECTIONS_BEGIN  0x170  /* void* — start of ConnectionEntry array */
+#define X4_MACRODATA_OFFSET_CONNECTIONS_END    0x178  /* void* — end of ConnectionEntry array */
+
+// ---- ConnectionEntry layout ----
+// Each entry is 352 bytes (0x160 stride). Sorted by FNV-1a hash at +8.
+// Verified: v9.00 build 600626
+#define X4_CONNECTION_ENTRY_SIZE    0x160  /* 352 bytes */
+#define X4_CONNECTION_OFFSET_HASH   0x08   /* uint32 — FNV-1a hash of lowercased name */
+
+// ---- Construction plan entry (528 bytes) ----
+// Internal plan entry used by the station construction system.
+// Allocate via GameAlloc, init via PlanEntry_Construct (0x140D09C90).
+// Transform layout: position (__m128) + 3x3 rotation matrix (3x __m128, row-major).
+//   +48: [pos_x, pos_y, pos_z, 0.0]       -- position relative to station origin
+//   +64: [r0_x,  r0_y,  r0_z,  0.0]       -- rotation matrix row 0
+//   +80: [r1_x,  r1_y,  r1_z,  0.0]       -- rotation matrix row 1
+//   +96: [r2_x,  r2_y,  r2_z,  0.0]       -- rotation matrix row 2
+// Identity rotation = {1,0,0,0}, {0,1,0,0}, {0,0,1,0}.
+// All-zeros rotation is INVALID — always set at least identity.
+//
+// Euler angle convention (UIConstructionPlanEntry.offset <-> rotation matrix):
+//   Extract:  yaw   = atan2(-r2[0], r2[2]) * (-180/pi)
+//             pitch = asin(clamp(r2[1])) * (180/pi)
+//             roll  = atan2(-r0[1], r1[1]) * (180/pi)
+//   Inject:   y = -yaw*(pi/180), p = pitch*(pi/180), r = roll*(pi/180)
+//             row0 = { cy*cr+sy*sp*sr, -cy*sr+sy*sp*cr, sy*cp, 0 }
+//             row1 = { cp*sr,           cp*cr,          -sp,   0 }
+//             row2 = { -sy*cr+cy*sp*sr, sy*sr+cy*sp*cr, cy*cp, 0 }
+//
+// Predecessor chain: predecessor ptr links to another X4PlanEntry in the same
+// plan. During spawn, Station_InitFromPlan (0x140488120) uses entry->id stored
+// at module_entity+848 to find the predecessor module via
+// Station_FindModuleByPlanEntryID (0x140489B20), then Entity_EstablishConnection
+// (0x140399580) links the connection points bidirectionally.
+// Entry IDs only need to be unique within the plan (auto-assigned from atomic
+// counter at 0x1438778A0 if id==0 on construct).
+//
+// See docs/rev/CONSTRUCTION_PLANS.md for full documentation.
+// WARNING: struct layout — fragile across builds. Re-verify on game updates.
+// Verified: v9.00 build 600626 (R-Station4 + plan_entry_struct_analysis)
+typedef struct alignas(16) X4PlanEntry {
+    int64_t   id;                   // +0:   unique ID (auto-assigned from atomic counter if 0)
+    void*     macro_ptr;            // +8:   MacroData* (from MacroRegistry_Lookup)
+    void*     connection_ptr;       // +16:  ConnectionEntry* on THIS module (nullptr = auto/root)
+    void*     predecessor;          // +24:  X4PlanEntry* predecessor (nullptr = root module)
+    void*     pred_connection_ptr;  // +32:  ConnectionEntry* on PREDECESSOR module (nullptr = auto)
+    uint8_t   pad_40[8];           // +40:  padding (observed zero)
+    float     pos_x;               // +48:  position X relative to station origin
+    float     pos_y;               // +52:  position Y
+    float     pos_z;               // +56:  position Z
+    float     pos_w;               // +60:  padding (typically 0.0)
+    float     rot_row0[4];         // +64:  rotation matrix row 0 [r0x, r0y, r0z, 0]
+    float     rot_row1[4];         // +80:  rotation matrix row 1 [r1x, r1y, r1z, 0]
+    float     rot_row2[4];         // +96:  rotation matrix row 2 [r2x, r2y, r2z, 0]
+    uint8_t   loadout[408];        // +112: equipment loadout (init by sub_1400EEFB0)
+    uint8_t   is_fixed;            // +520: fixed/immovable flag
+    uint8_t   is_modified;         // +521: modified flag
+    uint8_t   is_bookmark;         // +522: bookmark flag
+    uint8_t   pad_end[5];          // +523: padding to 528 bytes (16-byte aligned)
+} X4PlanEntry;
+#define X4_PLAN_ENTRY_SIZE  sizeof(X4PlanEntry)  /* 528 */
+
 // ---- Global data RVAs (add to imagebase to get absolute address) ----
 // These are data pointers, not functions. Dereference to get the actual value.
 // WARNING: data addresses change between builds. Re-verify on game updates.
 // Verified: v9.00 build 600626
-#define X4_RVA_COMPONENT_REGISTRY  0x06C73D30  /* void** — g_ComponentRegistry */
-#define X4_RVA_SESSION_SEED        0x03C9F9C0  /* uint64* — g_SessionSeed */
+#define X4_RVA_COMPONENT_REGISTRY       0x06C73D30  /* void** — g_ComponentRegistry */
+#define X4_RVA_SESSION_SEED             0x03C9F9C0  /* uint64* — g_SessionSeed */
+#define X4_RVA_CONSTRUCTION_PLAN_DB     0x06C73FA0  /* void** — g_ConstructionPlanRegistry (RB-tree at +16) */
+#define X4_RVA_MACRO_REGISTRY           0x06C73E30  /* void*  — g_MacroRegistry (BST at +64) */
 
 // ---- Seed system constants (see docs/rev/WALKABLE_INTERIORS.md §16) ----
 // LCG formula: next = ROR64(seed * multiplier + addend, 30)

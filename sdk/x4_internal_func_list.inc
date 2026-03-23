@@ -36,6 +36,44 @@ X4_FUNC(void*, ComponentRegistry_Find, (void* registry, uint64_t universe_id, in
 // Verified: v9.00 build 600626, RVA 0x00315260
 X4_FUNC(int64_t, Component_GetCombinedSeed, (void* component))
 
+// MacroRegistry_Lookup — resolves a macro name to its internal MacroData pointer.
+// registry = g_MacroRegistry (RVA 0x06C73E30), sv = {const char* data, size_t len},
+// silent = 1 to suppress error logs on miss. Returns MacroData* or nullptr.
+// Uses FNV-1a hash with lowercased input. 200+ callers.
+// Verified: v9.00 build 600626, RVA 0x009E72B0
+X4_FUNC(void*, MacroRegistry_Lookup, (void* registry, const void* string_view, uint8_t silent))
+
+// ConstructionDB_CreatePlanDirect — allocates EditableConstructionPlan (296 bytes),
+// initializes fields, sets vtable, registers in g_ConstructionPlanRegistry.
+// Params: registry = *g_ConstructionPlanDB, source_type = 2 (local),
+//         id/name/desc are X4String* (Release ABI std::string, 32 bytes each).
+// Returns plan pointer on success, nullptr on failure.
+// Verified: v9.00 build 600626, RVA 0x00D0E680
+// PlanEntry_Construct — initializes a 528-byte PlanEntry in-place.
+// Caller must pre-allocate 528 bytes (via GameAlloc). If id==0, auto-assigns from
+// global counter under critical section. loadout_ptr=0 calls default loadout init.
+// transform is pointer to 4x __m128 (64 bytes). Returns this.
+// Verified: v9.00 build 600626, RVA 0x00D09C90
+X4_FUNC(void*, PlanEntry_Construct, (void* this_ptr, void* macro_ptr, void* connection_ptr, void* predecessor_ptr, void* pred_connection_ptr, const void* transform_4x16, void* loadout_ptr, bool is_fixed, bool is_modified, bool is_bookmark, int64_t id))
+
+// GameAlloc — game's internal memory allocator (C++ operator new equivalent).
+// size = byte count, alignment via last param (typically 16).
+// Middle params (a2-a4) are register passthrough noise, ignored by allocator.
+// Returns allocated pointer or nullptr.
+// Verified: v9.00 build 600626, RVA 0x0145CB90
+X4_FUNC(void*, GameAlloc, (size_t size, int _unused1, int _unused2, int _unused3, int alignment))
+
+// Note: id/name/desc are std::string* (MSVC ABI, 32 bytes each). Declared as void* for C compat.
+// Callers must build with matching ABI (Release or RelWithDebInfo, NOT Debug).
+X4_FUNC(void*, ConstructionDB_CreatePlanDirect, (void* registry, int source_type, const void* id_str, const void* name_str, const void* desc_str))
+
+// ConstructionDB_AddPlan — registers a plan into the construction plan RB-tree.
+// Validates: plan != null, plan id length > 0, source_type matches plan's +240.
+// Computes FNV-1a of plan id string, inserts into tree at registry+16.
+// Returns 1 on success, 0 if already exists or validation fails.
+// Verified: v9.00 build 600626, RVA 0x00D0E4E0
+X4_FUNC(bool, ConstructionDB_AddPlan, (void* registry, int source_type, void* plan))
+
 // Controllable::CreateDynamicInterior — creates a corridor+room interior on a station.
 // Called by npc_instantiation during savegame load and by MD create_dynamic_interior action.
 // Params 9-14 are variadic in the original, but on x64 MSVC they occupy the same stack

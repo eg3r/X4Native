@@ -74,6 +74,66 @@
       },
       "900-600626": { "rva": "0x000CE6B0" }
     },
+    "PlanEntry_Construct": {
+      "_find_hints": {
+        "method": "caller_chain",
+        "steps": [
+          "1. Called by ConstructionPlan_CopyEntries (5 callers total)",
+          "2. Function is ~0xD0 bytes. Writes fields at fixed offsets: +0=id, +8=macro, +16=conn, +24=pred, +32=pred_conn, +48=transform(64B), +520-522=flags",
+          "3. Verify: if id==0, enters critical section (stru_143CECC60) and increments global counter (qword_1438778A0)",
+          "4. Verify: calls sub_1400EEFB0 (loadout default init) at this+112"
+        ],
+        "verify_strings": [],
+        "byte_sig": "48 89 5C 24 10 48 89 4C 24 08 57 48 83 EC 20 48",
+        "byte_sig_note": "First 16 bytes: save rbx+rcx to home area, push rdi, sub rsp 20h."
+      },
+      "900-600626": { "rva": "0x00D09C90" }
+    },
+    "GameAlloc": {
+      "_find_hints": {
+        "method": "caller_chain",
+        "steps": [
+          "1. Extremely high caller count (thousands) — this is the game's C++ operator new equivalent",
+          "2. First param = size, last param = alignment (typically 16)",
+          "3. Verify: calls into Windows heap allocation (HeapAlloc or VirtualAlloc)",
+          "4. Verify: middle params (a2-a4) are unused register passthrough"
+        ],
+        "verify_strings": [],
+        "byte_sig": "48 89 5C 24 08 48 89 74 24 10 57 48 81 EC 30 01",
+        "byte_sig_note": "First 16 bytes: save rbx+rsi, push rdi, sub rsp 130h. Large stack frame for alignment logic."
+      },
+      "900-600626": { "rva": "0x0145CB90" }
+    },
+    "ConstructionDB_CreatePlanDirect": {
+      "_find_hints": {
+        "method": "caller_chain",
+        "steps": [
+          "1. Only 1 code caller — from a UI/game state manager (sub_1404D2E30)",
+          "2. Function is small (~0xB4 bytes). Allocates 296 bytes (0x128), calls ConstructionPlan_Construct_Direct, sets EditableConstructionPlan vtable, calls ConstructionDB_AddPlan",
+          "3. Verify: references RTTI symbol 'EditableConstructionPlan@U@@6B@' for vtable assignment",
+          "4. Verify: calls ConstructionDB_AddPlan as its last major callee"
+        ],
+        "verify_callee": "ConstructionDB_AddPlan",
+        "byte_sig": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48",
+        "byte_sig_note": "First 16 bytes: standard register save (rbx, rbp, rsi to home area). Small function (~0xB4)."
+      },
+      "900-600626": { "rva": "0x00D0E680" }
+    },
+    "ConstructionDB_AddPlan": {
+      "_find_hints": {
+        "method": "unique_string",
+        "steps": [
+          "1. Search for string 'ConstructionDB::AddPlan: Construciton plan is null' (note: game has typo 'Construciton')",
+          "2. Also references 'ConstructionDB::AddPlan: Construction plan with id' (duplicate check)",
+          "3. Verify: uses FNV-1a constants 0x811C9DC5 / 0x1000193 for hashing plan id",
+          "4. Verify: calls RBTree_Insert for tree insertion"
+        ],
+        "verify_strings": ["ConstructionDB::AddPlan: Construciton plan is null", "ConstructionDB::AddPlan: Construction plan with id"],
+        "byte_sig": "4C 89 44 24 18 53 48 83 EC 40 48 8B D9 4D 85 C0",
+        "byte_sig_note": "First 16 bytes: save r8 to home area, push rbx, sub rsp 40h, mov rbx=rcx, test r8. Medium function (~0x1A0)."
+      },
+      "900-600626": { "rva": "0x00D0E4E0" }
+    },
     "X4_FrameTick": {
       "_find_hints": {
         "method": "caller_chain",
