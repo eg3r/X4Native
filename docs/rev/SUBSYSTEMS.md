@@ -807,7 +807,7 @@ Classes used in our code or IDA findings are **bold**.
 | 12 | `cargobay` | |
 | 13 | `celestialbody` | |
 | 14 | `checkpoint` | |
-| 15 | `cluster` | |
+| **15** | **`cluster`** | **Galaxy subdivision — created by AddCluster, validated in AddSector. Parent of sectors.** |
 | 16 | `cockpit` | |
 | 17 | `collectableshieldrestore` | |
 | 18 | `collectableammo` | |
@@ -966,6 +966,85 @@ UIPosRot pos = g->GetObjectPositionInSector(avatar);  // returns sector-space co
 - Created entity has class 71 (base object) — compatible with `SetObjectSectorPos`
 - Entity registered in global component system — visible to all entity queries
 - `SetObjectSectorPos` then drives per-frame position updates (class 71 check passes, zone walk succeeds)
+
+---
+
+## 14. Runtime Galaxy Topology — AddCluster / AddSector
+
+> Source: IDA decompilation (2026-03-23). Both functions are Lua/FFI-only — zero internal game callers.
+
+### AddCluster (`0x14013CB60`)
+
+```cpp
+void AddCluster(const char* macroname, UIPosRot offset);
+```
+
+Creates a cluster component under the galaxy. Steps:
+1. Null-checks `macroname`, logs error if null
+2. `MacroRegistry_Lookup` (`0x1409E72B0`) — FNV-1a hash + binary search in `g_MacroRegistry`. Can lazy-load from XML.
+3. `UIPosRot_ToTransformMatrix` (`0x14030D9C0`) — converts offset to 4x4 transform matrix
+4. Reads galaxy from `g_GameUniverse + 552`
+5. Connection resolution: `cluster_defaults + 1136` (child slot) pairs with `galaxy_defaults + 1136` (parent slot)
+6. Abstract check: `component_defaults + 401` — if non-zero, macro is abstract/disabled, returns silently
+7. `ComponentFactory_Create` (`0x14089A400`) — 17-parameter factory call, creates the component
+8. Result validated as class 15 (cluster)
+
+**Does NOT return the created cluster's UniverseID.** Discover via before/after `GetClusters()` diff or hook `ComponentFactory_Create`.
+
+### AddSector (`0x14013D550`)
+
+```cpp
+void AddSector(UniverseID clusterid, const char* macroname, UIPosRot offset);
+```
+
+Creates a sector component under an existing cluster. Steps:
+1. `ComponentRegistry_Find(g_ComponentRegistry, clusterid, 4)` — validates cluster exists
+2. Validates cluster is class 15
+3. Same macro lookup + transform + abstract check as AddCluster
+4. Connection resolution: `sector_defaults + 1136` (child slot) pairs with `cluster_defaults + 1144` (parent slot). Note: **offset 1144 not 1136** — clusters have separate connection slots for galaxy attachment (+1136) and sector acceptance (+1144).
+5. `ComponentFactory_Create` with cluster as parent
+6. Result validated as class 86 (sector)
+
+**Does NOT return the created sector's UniverseID.** Same discovery approach needed.
+
+### Connection Offset Table
+
+| Defaults Class | Offset | Connection Type |
+|---------------|--------|-----------------|
+| Galaxy defaults + 1136 (0x470) | Parent conn | Where clusters attach to galaxy |
+| Cluster defaults + 1136 (0x470) | Child conn | Cluster's "attach to parent" slot |
+| Cluster defaults + 1144 (0x478) | Parent conn | Where sectors attach to cluster |
+| Sector defaults + 1136 (0x470) | Child conn | Sector's "attach to parent" slot |
+
+### MacroRegistry
+
+Fully loaded at boot from all installed extension XML index files — includes ALL DLC macros regardless of which gamestart is used. Macros not in the initial index can be lazy-loaded from disk. This means `AddCluster("cluster_01_macro", ...)` works on any game instance as long as the DLC files are installed.
+
+### Key Functions
+
+| Address | Name | Purpose |
+|---------|------|---------|
+| `0x14013CB60` | `AddCluster` | Creates cluster under galaxy |
+| `0x14013D550` | `AddSector` | Creates sector under cluster |
+| `0x14030D9C0` | `UIPosRot_ToTransformMatrix` | UIPosRot → 4x4 matrix (uses SSE sincos) |
+| `0x1409E72B0` | `MacroRegistry_Lookup` | Macro name → data pointer (FNV-1a, lazy-load) |
+| `0x14089A400` | `ComponentFactory_Create` | Core factory (2389 insns, creates any component) |
+| `0x1409A6540` | `GameInit_LoadUniverse` | Full universe init (sets g_GameUniverse) |
+| `0x140A68C80` | `GameStartOrLoad` | NewGame/LoadGame entry point |
+| `0x14088E4C0` | `GameUniverse_Create` | Allocates GameUniverse (1216 bytes) |
+| `0x1406432C0` | `Galaxy_CreateCluster` | Internal cluster creation (used during galaxy load) |
+
+### NewGame Galaxy Loading
+
+`GameStartOrLoad` (`0x140A68C80`) for NewGame:
+1. Finds gamestart definition by ID (stride 14608 bytes)
+2. `GameInit_LoadUniverse` creates `GameUniverse` (1216 bytes), sets `g_GameUniverse`, creates galaxy from map macro
+3. Back in GameStartOrLoad: reads `"cluster"` key → `MacroRegistry_Lookup` → `Galaxy_CreateCluster`
+4. Reads `"sectors"` key (comma-separated) → adds each to cluster tree
+5. Calls sector position finalizer (`sub_14037A550`)
+6. Creates player entity, fires `GameStartedEvent`
+
+**Key insight:** Only the gamestart's cluster/sectors are instantiated. The macro database has ALL macros, but `ComponentRegistry` only has what was created. This explains why the client's `GetClusters(true)` returns only 1 cluster.
 
 ---
 

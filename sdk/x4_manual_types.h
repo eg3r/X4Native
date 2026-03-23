@@ -70,6 +70,7 @@ typedef enum X4RoomType {
 // IDs 0-107 are concrete/leaf classes. IDs 108-118 are abstract hierarchy classes.
 // ID 119 is NOT a class — it is the out-of-range sentinel returned on lookup failure.
 // Verified: v9.00 (runtime dump)
+#define X4_CLASS_CLUSTER          15   /* Cluster — galaxy subdivision, parent of sectors. Created by AddCluster. */
 #define X4_CLASS_NPC              70   /* On-foot NPC character */
 #define X4_CLASS_OBJECT           71   /* Base class for all placed 3D entities */
 #define X4_CLASS_POSITIONAL       75   /* Positional entity (required by Get/SetPositionalOffset) */
