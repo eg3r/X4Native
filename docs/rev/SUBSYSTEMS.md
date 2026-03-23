@@ -1046,6 +1046,22 @@ Fully loaded at boot from all installed extension XML index files — includes A
 
 **Key insight:** Only the gamestart's cluster/sectors are instantiated. The macro database has ALL macros, but `ComponentRegistry` only has what was created. This explains why the client's `GetClusters(true)` returns only 1 cluster.
 
+### 10.3 Component "Known" System
+
+Components have a per-faction "known" flag tracked via vtable methods:
+
+| Vtable Offset | Purpose |
+|---------------|---------|
+| +0x1768 (5992) | `isKnownTo(factionCtx)` — returns bool |
+| +0x1780 (6016) | `setKnownTo(factionCtx, known)` — sets flag |
+| +0x18C8 (6344) | `isVisited(int)` — separate "explored" flag |
+
+**`g_PlayerFactionContext`** (`0x1438776C8`) holds the player's faction context object pointer at runtime (863 references across the binary). This is used as the comparison value in all "known to player" checks.
+
+**Critical behavior:** `GetClusters` (Lua global at `0x140262FC0`) and `GetSectors` (at `0x140263220`) **always** filter by "known to player faction", even when called with `false`. The boolean parameter only controls an additional "visited/explored" filter. Components created by `AddCluster`/`AddSector` are NOT automatically marked as "known" — that step is performed separately by `setup_gamestarts.xml` via `<set_known object="$Cluster" known="true"/>` during normal game initialization.
+
+**`SetKnownTo`** (export at `0x14017F0D0`): `void SetKnownTo(UniverseID componentid, const char* factionid)`. Use `"player"` as factionid. Must be called on dynamically created clusters/sectors to make them visible to `GetClusters`/`GetSectors`.
+
 ---
 
 ## 11. Related Documents
