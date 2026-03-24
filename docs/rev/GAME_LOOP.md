@@ -450,7 +450,30 @@ Total size: ~736 bytes. Allocated once at engine startup, never freed during gam
 
 ---
 
-## 14. Related Documents
+## 14. Game Event Ordering
+
+The game fires several high-level lifecycle events during save loading. Their ordering matters for extensions that need to initialize state based on the loaded world.
+
+### `event_game_loaded` vs `event_game_started`
+
+| Event | When | Lua State | World Ready |
+|-------|------|-----------|-------------|
+| `event_game_loaded` | Save data loaded, game world initializing | Valid | **Partially** -- entity IDs valid, but not all MD cues have fired. `set_known` cues (from gamestarts) have NOT yet run. |
+| `event_game_started` | Game world fully initialized, all gamestart MD cues complete | Valid | **Yes** -- all `set_known` flags propagated, sector discovery complete. |
+
+**Key ordering:** `event_game_loaded` fires **BEFORE** `event_game_started`. MD cues that listen to `event_game_started` (e.g., gamestart setup cues that mark sectors as "known") run after `event_game_loaded` callbacks have already executed.
+
+**Practical impact:** Code that runs on `on_game_loaded` and queries world state influenced by gamestart MD cues (e.g., `GetClusters(false)` which depends on "known" flags) may see stale results. The "known" flags are set by MD cues triggered by `event_game_started`, which fires later. Use `on_game_started` when you need fully-initialized world state including gamestart effects.
+
+**X4Native SDK events:**
+- `on_game_loaded` — fires on `event_game_loaded`. Entity IDs valid, but gamestart MD cues have NOT yet run.
+- `on_game_started` — fires on `event_game_started`. World fully initialized, all gamestart MD cues complete.
+
+> **Confirmed:** 2026-03-24 via topology discovery bug. Client `TopologyManager` started on `on_game_loaded` but depended on `X4Online_ClientGamestartSetup` MD cue (fires on `event_game_started`) having already marked sectors as "known." Fix: `on_game_started` now available in X4Native SDK.
+
+---
+
+## 15. Related Documents
 
 | Document | Contents |
 |----------|----------|

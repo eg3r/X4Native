@@ -135,7 +135,8 @@ All API functions live in the `x4n::` namespace. Include `<x4native.h>` for ever
 
 | Event | When |
 |-------|------|
-| `on_game_loaded` | Game world is initialized and safe to call game functions |
+| `on_game_loaded` | Game world is initialized and safe to call game functions. Gamestart MD cues may not have run yet. |
+| `on_game_started` | World fully initialized, all gamestart MD cues complete. Use when you need gamestart effects (e.g., known sectors, faction setup). |
 | `on_game_save` | Game is being saved |
 | `on_ui_reload` | Lua state rebuilt (after `/reloadui`) |
 | `on_frame_update` | Every UI frame tick |
@@ -164,7 +165,7 @@ x4n::raise_lua("my_lua_event_name", "optional_param");
 Forward game Lua events into C++ without writing any Lua:
 
 ```cpp
-// Register bridge (call during on_game_loaded)
+// Register bridge (call during on_game_loaded or on_game_started)
 x4n::bridge_lua_event("playerUndocked", "on_player_undocked");
 
 // Subscribe — string param from Lua is forwarded automatically
@@ -214,7 +215,7 @@ X4N_EXTENSION {
 }
 ```
 
-The full flow is: **Game Engine → MD cue → `raise_lua_event` → Lua bridge → C++ event**. This is the same pattern X4Native itself uses for `on_game_loaded` and `on_game_saved`.
+The full flow is: **Game Engine → MD cue → `raise_lua_event` → Lua bridge → C++ event**. This is the same pattern X4Native itself uses for `on_game_loaded`, `on_game_started`, and `on_game_saved`.
 
 ### Logging
 
@@ -273,13 +274,23 @@ static X4GameFunctions* game = nullptr;
 
 X4N_EXTENSION {
     game = x4n::game();
+
+    // Register lifecycle listeners — functions are called when the event fires.
+    x4n::on("on_game_loaded", on_game_loaded);
+    x4n::on("on_game_started", on_game_started);
 }
 
-// Call game functions (only after on_game_loaded!)
+// Called when save data is loaded. Game functions safe, but gamestart MD cues NOT yet fired.
 void on_game_loaded() {
     UniverseID player = game->GetPlayerID();
     const char* name = game->GetComponentName(player);
     bool docked = game->IsPlayerValid();
+}
+
+// Called when world is fully initialized (all gamestart MD cues complete).
+// Use this when you need known sectors, faction setup, scripted entity placement, etc.
+void on_game_started() {
+    // All set_known flags, faction setup, etc. are now visible.
 }
 ```
 

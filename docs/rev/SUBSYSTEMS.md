@@ -32,7 +32,7 @@ graph TD
     style ROOT fill:#6b3a8a,color:#fff
     style C fill:#4a4a4a,color:#fff
     style E fill:#8b1a1a,color:#fff
-    style SENT fill:#4a4a4a,color:#aaa,stroke-dasharray: 5 5
+    style SENT fill:#aabbcc,color:#000,stroke-dasharray: 10 10
 ```
 
 > The tree structure above is illustrative — actual node ordering depends on registration order and BST key comparisons. The walk is in-order (left → node → right).
@@ -387,7 +387,7 @@ sequenceDiagram
     participant SU as UpdateSubsystems
     participant SUB as Subsystem Handlers
 
-    rect rgb(45, 90, 39)
+    rect rgb(160, 189, 216)
     Note over CODE,BUS: Frame N
     CODE->>MEM: Modify state directly
     CODE->>ALLOC: Allocate event (e.g. 48 bytes)
@@ -397,7 +397,7 @@ sequenceDiagram
     CODE->>BUS: post_event() — NO LOCK
     end
 
-    rect rgb(30, 74, 110)
+    rect rgb(138, 185, 120)
     Note over SU,SUB: Frame N+1
     SU->>BUS: Drain event queue
     BUS->>SUB: Dispatch to handlers
@@ -489,7 +489,7 @@ This is the same system used by all exported functions that take entity/componen
 
 ## 10. World Initialization — NewGame vs. Load
 
-X4 has exactly two paths that initialize a live game world. Both end at the same point (`U::UniverseGeneratedEvent` → `on_game_loaded`) and are indistinguishable to code running after that event fires.
+X4 has exactly two paths that initialize a live game world. Both end at the same point (`U::UniverseGeneratedEvent` → `on_game_loaded`) and are indistinguishable to code running after that event fires. Note: `on_game_loaded` fires when the world is structurally ready (entity IDs valid, game functions safe), but gamestart MD cues (e.g., `set_known`, faction setup) have NOT yet completed. The later `on_game_started` event (triggered by `event_game_started`) fires after all gamestart MD cues have run.
 
 ### Global: `qword_143C97650` — IsNewGame Sentinel
 
@@ -524,6 +524,9 @@ NewGame("x4online_client", 0, nullptr)
   → U::UniverseGeneratedEvent posted
   → AnarkLuaEngine processes event
   → X4Native fires on_game_loaded
+  → Gamestart MD cues run (set_known, faction setup, etc.)
+  → event_game_started fires
+  → X4Native fires on_game_started
 ```
 
 **`U::NewGameAction` RTTI:** `0x1431c50b8`
@@ -539,6 +542,8 @@ GameClass::Load("save01.xml.gz")
   → Player, entities, economy, factions all restored from file
   → U::UniverseGeneratedEvent posted
   → on_game_loaded fires
+  → Gamestart MD cues complete
+  → on_game_started fires
 ```
 
 ### Gamestart XML — nosave Tag

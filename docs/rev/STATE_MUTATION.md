@@ -378,7 +378,7 @@ All three rotation axes are applied. The rotation is **not** yaw-only — it's f
 
 `GetClusters` and `GetSectors` are **Lua-registered functions** (not PE exports, not FFI cdef). They appear as strings in `.rdata` (`0x142a0c858`, `0x1429d4d20`) but cannot be called directly from C++.
 
-**Strategy for sector enumeration from C++:** Use x4native's Lua bridge at `on_game_loaded`. Inject a Lua snippet that iterates `GetClusters(true)` → `GetSectors(cluster)` and forwards each sector ID to C++ via `raise_lua_event`.
+**Strategy for sector enumeration from C++:** Use x4native's Lua bridge at `on_game_loaded` (or `on_game_started` if you need gamestart effects like known-sector flags to be visible). Inject a Lua snippet that iterates `GetClusters(true)` → `GetSectors(cluster)` and forwards each sector ID to C++ via `raise_lua_event`.
 
 ```cpp
 // In on_game_loaded:

@@ -4,15 +4,28 @@
 
 The event system is a **general-purpose bidirectional event bus**. Any event name can flow in any direction — Lua→C++, C++→Lua, or C++→C++. The bus is implemented as a pub/sub system in the core DLL (`EventSystem`), with two bridges in the proxy that connect it to X4's Lua/MD layer.
 
-```
-    MD / Lua                    Event Bus (core DLL)              Extension DLLs
-    ────────                    ────────────────────              ──────────────
-  raise_lua_event ───────►  EventSystem::fire(name, data) ◄────── subscribe()
-  RegisterEvent              subscribe / unsubscribe               raise_event()
-  SetScript                         │
-                          Lua Bridge (proxy DLL)
-                          inbound:  Lua → raise_event
-                          outbound: raise → CallEventScripts
+```mermaid
+graph LR
+    subgraph "MD / Lua"
+        RLE["raise_lua_event"]
+        RE["RegisterEvent\nCallEventScripts"]
+    end
+
+    subgraph "Core DLL"
+        EB["EventSystem::fire\n(name, data)"]
+        IN["Lua Bridge\ninbound"]
+        OUT["Lua Bridge\noutbound"]
+    end
+
+    subgraph "Extension DLLs"
+        CB["callbacks"]
+        RAI["raise_event()"]
+    end
+
+    RLE -->|"Lua→C++"| IN --> EB
+    EB --> OUT -->|"C++→Lua"| RE
+    EB -->|"dispatch"| CB
+    RAI -->|"fire"| EB
 ```
 
 **Key principle:** The event bus doesn't know or care which events exist. Extensions subscribe to any name. The Lua bridge is a general transport.
@@ -22,6 +35,7 @@ The event system is a **general-purpose bidirectional event bus**. Any event nam
 | Event | Source | Direction |
 |-------|--------|-----------|
 | `on_game_loaded` | MD cue (`player.age ≥ 3s`) → Lua → DLL | Lua→C++ |
+| `on_game_started` | MD `event_game_started` → Lua → DLL | Lua→C++ |
 | `on_game_save` | MD `event_game_saved` → Lua → DLL | Lua→C++ |
 | `on_ui_reload` | Lua bootstrap on re-execution | Lua→C++ |
 | `on_before_reload` | Core `impl_prepare_reload()` | C++ internal |
@@ -48,8 +62,8 @@ Table-driven forwarding in `x4native.lua`. Extensions can dynamically register b
 
 | Scope | Pattern | Example |
 |-------|---------|---------|
-| C++ bus | `on_<name>` | `on_game_loaded` |
-| Framework Lua | `x4native.<name>` | `x4native.game_loaded` |
+| C++ bus | `on_<name>` | `on_game_loaded`, `on_game_started` |
+| Framework Lua | `x4native.<name>` | `x4native.game_loaded`, `x4native.game_started` |
 | Extension Lua | `<modname>.<name>` | `tradealert.price_changed` |
 
 ### Thread Safety
@@ -158,7 +172,8 @@ The core scans every subdirectory of `extensions/` for `x4native.json`, checks i
 |-------|------|--------------|
 | Discovery | Game start | Core scans `extensions/*/x4native.json` |
 | Init | Game start | `x4native_init(api)` — register events, hooks. Can read stash. No game calls yet. |
-| Game Loaded | Savegame loaded | `on_game_loaded` fires. Game functions safe. |
+| Game Loaded | Savegame loaded | `on_game_loaded` fires. Game functions safe. Gamestart MD cues may not have run yet. |
+| Game Started | After gamestart cues | `on_game_started` fires. All gamestart MD cues complete (known flags, factions, etc.). |
 | Runtime | Every frame | `on_frame_update`, `on_game_save`, custom events. Stash read/write anytime. |
 | Shutdown | Game exit / save load | `x4native_shutdown()` — cleanup. Write state to stash here. |
 | Unload | After shutdown | `FreeLibrary`, all hooks and subscriptions auto-cleared. Stash persists in proxy. |

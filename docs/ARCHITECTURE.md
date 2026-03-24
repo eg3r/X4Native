@@ -85,6 +85,13 @@ sequenceDiagram
     DLL->>EXT: Dispatch on_game_loaded
     Note over EXT: Game functions now safe!
 
+    Note over X4,EXT: Stage 2b — Gamestart Complete
+    X4->>MD: event_game_started
+    MD->>LUA: raise_lua_event("x4native.game_started")
+    LUA->>DLL: api.raise_event("on_game_started")
+    DLL->>EXT: Dispatch on_game_started
+    Note over EXT: All gamestart MD cues have run
+
     Note over X4,EXT: Stage 3 — Runtime
     loop Every frame
         DLL->>EXT: on_frame_update
@@ -110,6 +117,7 @@ When the player loads a savegame, X4 performs a **full Lua state teardown and re
 5. Frame poll begins (`GetPlayerID` check each frame)
 6. Game world loads → `GetPlayerID() != 0` → `on_game_loaded` fires
 7. MD cue arrives later → guarded, no duplicate
+8. Gamestart MD cues complete → `event_game_started` → `on_game_started` fires
 
 ### Extension Re-Discovery
 
@@ -130,6 +138,10 @@ On Lua state rebuild, `ExtensionManager::discover()` performs a full shutdown cy
 | MD cue | `event_game_loaded` in `x4native_main.xml` | ~30-45s |
 
 A Lua-side guard ensures only the first to fire triggers `on_game_loaded`. The poll typically wins.
+
+### Game-Started Event
+
+A separate `on_game_started` event fires when `event_game_started` arrives via MD. This signals that all gamestart MD cues have completed (known sector flags set, factions initialized, scripted entities placed). Unlike `on_game_loaded`, this has no dual-detection mechanism — it fires once from the MD cue only.
 
 ## Hot-Reload
 

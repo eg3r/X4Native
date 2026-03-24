@@ -3,8 +3,9 @@
 -- Note: Players must disable Protected UI Mode in Settings > Extensions.
 --
 -- Multi-stage lifecycle:
---   Stage 1 (game start):   DLL loads immediately, extensions register via x4native_init()
---   Stage 2 (savegame load): MD cue fires raise_lua_event → Lua forwards "on_game_loaded"
+--   Stage 1 (game start):    DLL loads immediately, extensions register via x4native_init()
+--   Stage 2a (save loaded):  MD cue fires raise_lua_event → Lua forwards "on_game_loaded"
+--   Stage 2b (world ready):  MD cue fires raise_lua_event → Lua forwards "on_game_started"
 --   Stage 3 (runtime):       MD signals game_saved; per-frame via SetScript("onUpdate")
 --
 -- DLL lifecycle (two-DLL architecture):
@@ -17,8 +18,9 @@
 --   Result: new native code running without restarting X4.
 --
 -- Event wiring:
---   MD → raise_lua_event("x4native.game_loaded") → RegisterEvent → DLL raise_event
---   MD → raise_lua_event("x4native.game_saved")  → RegisterEvent → DLL raise_event
+--   MD → raise_lua_event("x4native.game_loaded")  → RegisterEvent → DLL raise_event("on_game_loaded")
+--   MD → raise_lua_event("x4native.game_started") → RegisterEvent → DLL raise_event("on_game_started")
+--   MD → raise_lua_event("x4native.game_saved")   → RegisterEvent → DLL raise_event("on_game_save")
 --   Per-frame → SetScript("onUpdate") → DLL raise_event("on_frame_update")
 --   UI reload → Lua file re-executes, DLL receives on_ui_reload + fresh lua_State*
 
@@ -98,8 +100,9 @@ load_dll()
 -- raise_lua_event("x4native.game_loaded").
 -- After this, extensions can safely call game functions.
 -- ============================================================
-bridge_forward_lua_event("x4native.game_loaded", "on_game_loaded")
-bridge_forward_lua_event("x4native.game_saved",  "on_game_save")
+bridge_forward_lua_event("x4native.game_loaded",  "on_game_loaded")
+bridge_forward_lua_event("x4native.game_started", "on_game_started")
+bridge_forward_lua_event("x4native.game_saved",   "on_game_save")
 
 -- Round-trip echo: C++ sends ping via raise_lua_event, Lua forwards back to C++
 bridge_forward_lua_event("x4native_event_test.ping", "on_event_test_pong")

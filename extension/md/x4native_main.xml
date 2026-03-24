@@ -4,19 +4,28 @@
   xsi:noNamespaceSchemaLocation="md.xsd">
   <cues>
 
-    <!-- Stage 2: Signal Lua once the game is fully loaded.
-         Uses the engine's event_game_loaded which fires on every save load / new game.
-         instantiate="true" allows it to fire on every load, not just the first. -->
+    <!-- Stage 2a: Signal Lua when save data is loaded (entity IDs valid, but gamestart MD cues NOT yet fired).
+         Extensions can start initializing but must NOT rely on set_known or other gamestart effects. -->
     <cue name="x4native_GameLoaded" instantiate="true">
       <conditions>
-        <check_any>
-          <event_game_loaded />
-          <event_game_started />
-        </check_any>
+        <event_game_loaded />
       </conditions>
       <actions>
         <debug_text text="'X4Native: MD signalling game_loaded to Lua'" filter="general"/>
         <raise_lua_event name="'x4native.game_loaded'" />
+      </actions>
+    </cue>
+
+    <!-- Stage 2b: Signal Lua when game world is fully initialized (all gamestart MD cues complete).
+         Fires AFTER event_game_loaded. Safe to query world state including set_known flags,
+         sector discovery, faction setup, etc. -->
+    <cue name="x4native_GameStarted" instantiate="true">
+      <conditions>
+        <event_game_started />
+      </conditions>
+      <actions>
+        <debug_text text="'X4Native: MD signalling game_started to Lua'" filter="general"/>
+        <raise_lua_event name="'x4native.game_started'" />
       </actions>
     </cue>
 
