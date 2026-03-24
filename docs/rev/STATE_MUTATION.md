@@ -814,3 +814,41 @@ void SetPositionalOffset(UniverseID positionalid, UIPosRot offset);
 **Address:** `0x1402D4130`
 
 Maps class name strings (e.g., `"positional"`, `"sector"`, `"room"`) to numeric IDs at runtime. Lookup table at `0x1438D2568` (BSS, populated at startup). This is the same function referenced in SUBSYSTEMS.md Section 13.1. The complete class ID table is in SUBSYSTEMS.md Section 13.2.
+
+---
+
+## 14. Lua Bridge Safety — Component Lifetime Hazards
+
+### Problem: `GetComponentData` on destroyed components
+
+Game functions accessed via `x4n::raise_lua()` execute Lua code that calls game APIs (e.g., `GetComponentData(id, "macro")`). If the component ID refers to a destroyed or stale entity, the game engine throws a **C++ exception** that propagates up through the Lua/C boundary and crashes the `onUpdate` handler.
+
+**Crash pattern:**
+```
+[=ERROR=] Error while executing onUpdate script.
+Errormessage: C++ exception
+```
+
+### Why this happens in practice
+
+Entity snapshots are read from the game in one phase (e.g., `tick_positions`), then processed in a later phase (e.g., `broadcast_state`). Between these phases, entities can become stale (leave sector, dock, get destroyed). The snapshot still holds the old `host_id` and `sector_id`, but the game component no longer exists.
+
+If the processing phase calls `x4n::raise_lua()` to look up data about the stale component (macro name, sector macro, etc.), the Lua handler calls `GetComponentData(dead_id, "macro")` which throws.
+
+### Safe pattern: cache-only reads
+
+Pre-warm macro caches during entity enumeration (one-time). In per-frame loops, only read from the cache via `std::unordered_map::find()` — never trigger new Lua lookups. If a cache miss occurs, skip the entity; it will be handled when properly enumerated.
+
+```cpp
+// UNSAFE — triggers Lua for uncached IDs, can crash on stale entities:
+e.macro = get_component_macro(e.host_id);
+
+// SAFE — cache-only read, returns empty string on miss:
+auto it = component_macro_cache_.find(e.host_id);
+if (it != component_macro_cache_.end() && !it->second.empty())
+    e.macro = it->second;
+```
+
+### Rule
+
+**Never call `x4n::raise_lua()` or any function that triggers Lua inside a per-frame entity iteration loop.** The loop may contain stale IDs. Use pre-warmed caches and cache-only reads.
