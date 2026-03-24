@@ -1069,6 +1069,60 @@ Components have a per-faction "known" flag tracked via vtable methods:
 
 ---
 
+## 15. Object Known System — Visibility and Discovery
+
+Entities (stations, ships) have a **known state** that controls map/HUD visibility. This is independent from ownership and from 3D rendering (entities in loaded zones always render in 3D regardless of known state).
+
+### IsObjectKnown Virtual (`0x140694190`)
+
+Shared identically by Station (`vtable 0x142B05590`) and Ship (`vtable 0x142B13980`):
+
+```c
+bool IsObjectKnown(Component* self) {
+    return *(BYTE*)(self + 858)                            // known_to_all flag
+        || *(QWORD*)(self + 840) == g_PlayerFactionContext // owner IS player
+        || *(QWORD*)(self + 888);                          // known_faction_count > 0
+}
+```
+
+Three conditions, any one sufficient:
+1. **`component+858`** — "known to all" global flag (not normally set)
+2. **`component+840 == g_PlayerFactionContext`** — entity owner IS the player faction
+3. **`component+888 > 0`** — at least one faction in the known-to list (set by `SetKnownTo`)
+
+Player-owned entities pass condition (2) automatically. NPC-owned entities require explicit `SetKnownTo(entity, faction)` calls.
+
+### Component Known-State Layout
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| +840 | 8 | owner_faction_ptr | Owner faction context pointer |
+| +858 | 1 | known_to_all | Global known flag (byte) |
+| +864 | 16 | known_factions_arr | Small-array-optimized faction pointer list |
+| +880 | 8 | known_factions_cap | Array capacity (2 = inline, >2 = heap) |
+| +888 | 8 | known_factions_count | Number of factions in known-to list |
+| +1025 | 1 | forced_radar_visible | Set by `SetObjectForcedRadarVisible` |
+
+### Key APIs
+
+| Function | Address | Signature |
+|----------|---------|-----------|
+| `SetKnownTo` (FFI export) | `0x14017F0D0` | `void SetKnownTo(UniverseID componentid, const char* factionid)` |
+| `SetObjectForcedRadarVisible` | `0x14017F5A0` | `void SetObjectForcedRadarVisible(UniverseID componentid, bool visible)` |
+| `IsObjectKnown` (virtual) | `0x140694190` | Internal virtual, not directly callable |
+
+### Ownership vs Known — Independent Systems
+
+`SetComponentOwner` changes the owner pointer at `+840` and dispatches `ChangedOwnerEvent` / `ChangedTrueOwnerEvent`, but **never modifies** the known flag, known-factions array, or count. Changing ownership does not change known state.
+
+The vanilla game's `setup_gamestarts.xml` explicitly iterates all stations with `<set_known object="$Station" known="true"/>` during game initialization. Dynamically spawned entities need explicit `SetKnownTo` calls if they should appear on the map/HUD for non-owner factions.
+
+### Map UI Filter
+
+`menu_map.lua:7471` filters objects with `(not isknown) or (not isradarvisible)`. Objects that fail `IsObjectKnown` are excluded from the map and targeting HUD.
+
+---
+
 ## 11. Related Documents
 
 | Document | Contents |
