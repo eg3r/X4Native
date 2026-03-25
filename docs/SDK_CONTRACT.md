@@ -2,7 +2,7 @@
 
 ## Internal C ABI
 
-Extensions interact through the `x4n::` namespace API, which wraps a flat C ABI that crosses DLL boundaries safely. The SDK is split into focused headers — `x4n_core.h` (detail, game API, lifecycle macros), `x4n_events.h`, `x4n_log.h`, `x4n_stash.h`, `x4n_game_utils.h`, `x4n_hooks.h` — each self-contained. `x4native.h` is a convenience umbrella that includes all of them. Extension developers never use the C ABI layer directly.
+Extensions interact through the `x4n::` namespace API, which wraps a flat C ABI that crosses DLL boundaries safely. The SDK is split into focused headers — core (`x4n_core.h`, `x4n_events.h`, `x4n_log.h`, `x4n_stash.h`, `x4n_hooks.h`) and domain helpers (`x4n_entity.h`, `x4n_math.h`, `x4n_memory.h`, `x4n_rooms.h`, `x4n_plans.h`, `x4n_visibility.h`) — each self-contained. `x4native.h` is a convenience umbrella that includes all of them. Extension developers never use the C ABI layer directly.
 
 ### Required Exports
 

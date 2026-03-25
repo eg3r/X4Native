@@ -65,7 +65,7 @@ U::EditableConstructionPlan (same size, different vtable)
 +523 padding (5 bytes)
 ```
 
-- Allocate via `GameAlloc(528, 0, 0, 0, 16)` or `game_alloc<X4PlanEntry>()`
+- Allocate via `x4n::memory::game_alloc<X4PlanEntry>()` (or raw: `GameAlloc(528, 0, 0, 0, 16)`)
 - Initialize via `PlanEntry_Construct(ptr, macro, conn, pred, pred_conn, transform, loadout, fixed, modified, bookmark, id)`
 - ID counter global: `0x1438778A0` (under critical section at `0x143CECC60`)
 
@@ -226,7 +226,7 @@ Stored in a **sorted array** (by FNV-1a hash) within each MacroData object.
 ### Connection Resolution Algorithm
 
 There is **no standalone function** for this -- every call site inlines the same pattern.
-Implemented as `x4n::resolve_connection()` in the SDK.
+Implemented as `x4n::plans::resolve_connection()` in the SDK (`x4n_plans.h`).
 
 ```
 1. Lowercase the connection name string
@@ -238,7 +238,7 @@ Implemented as `x4n::resolve_connection()` in the SDK.
 Confirmed at three independent call sites:
 - `0x140E10335` -- connection resolution in XML import
 - `0x140E107AF` -- predecessor connection resolution in XML import
-- Inline in `x4n::resolve_connection()` (SDK reimplementation)
+- Inline in `x4n::plans::resolve_connection()` (SDK reimplementation, `x4n_plans.h`)
 
 ## Key Functions
 

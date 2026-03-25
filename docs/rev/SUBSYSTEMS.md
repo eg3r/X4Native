@@ -1116,7 +1116,7 @@ next = ROR64(seed * 0x5851F42D4C957F2D + 0x14057B7EF767814F, 30)
 return next % count
 ```
 
-Identical to `x4n::advance_seed()`. Standard rooms use `seed = station.seed + roomtype_index`.
+Identical to `x4n::math::advance_seed()` (`x4n_math.h`). Standard rooms use `seed = station.seed + roomtype_index`.
 
 ### Connection Name Strings
 

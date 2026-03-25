@@ -89,8 +89,15 @@ X4N_SHUTDOWN {
 #include <x4n_events.h>      // x4n::on/off/raise/bridge_lua_event
 #include <x4n_log.h>         // x4n::log::info/warn/error/debug
 #include <x4n_stash.h>       // x4n::stash::set/get (survives /reloadui)
-#include <x4n_game_utils.h>  // x4n::find_component, advance_seed, roomtype_name
 #include <x4n_hooks.h>       // x4n::hook::before/after/remove
+
+// Game domain helpers:
+#include <x4n_entity.h>      // x4n::entity::find_component
+#include <x4n_math.h>        // x4n::math::RAD_TO_DEG, advance_seed, fnv1a_lower
+#include <x4n_memory.h>      // x4n::memory::game_alloc<T>, game_alloc_array<T> (SMem pool)
+#include <x4n_rooms.h>       // x4n::rooms::roomtype_name
+#include <x4n_plans.h>       // x4n::plans::resolve_macro, plan_registry, plan_set_entries
+#include <x4n_visibility.h>  // x4n::visibility::get_radar_visible, is_map_visible, ...
 ```
 
 Every sub-header is self-contained (includes `x4n_core.h` automatically). An events-only extension:
@@ -331,20 +338,34 @@ x4n::game_version();  // "9.00"
 x4n::version();       // "0.9.0 (game: 9.00)"
 x4n::path();          // "G:\...\extensions\x4native_mymod\"
 ```
-### Game Utilities
+### Game Domain Helpers
 
-Higher-level helpers for common game operations (include `<x4n_game_utils.h>` or `<x4native.h>`):
+Higher-level helpers organized into domain namespaces. Include individual headers or `<x4native.h>` for all:
 
 ```cpp
-// Resolve a UniverseID to its Object* via the component registry.
-// Returns nullptr if the ID is invalid. Only call after on_game_loaded.
-void* obj = x4n::find_component(entity_id);
+// Entity resolution (x4n_entity.h)
+void* obj = x4n::entity::find_component(entity_id);
 
-// Advance a seed using the game's LCG formula (same as MD autoadvanceseed).
-uint64_t next = x4n::advance_seed(seed);
+// Game math (x4n_math.h)
+uint64_t next = x4n::math::advance_seed(seed);
+float deg = radians * x4n::math::RAD_TO_DEG;
+uint64_t hash = x4n::math::fnv1a_lower("some_macro_name");
 
-// Convert X4RoomType enum to its string name.
-const char* name = x4n::roomtype_name(X4_ROOMTYPE_BAR);  // "bar"
+// Walkable interiors (x4n_rooms.h)
+const char* name = x4n::rooms::roomtype_name(X4_ROOMTYPE_BAR);  // "bar"
+
+// Game memory allocation (x4n_memory.h) — for objects the game will free
+auto* entry = x4n::memory::game_alloc<X4PlanEntry>();
+auto* arr = x4n::memory::game_alloc_array<X4PlanEntry*>(count);
+
+// Construction plans (x4n_plans.h)
+void* macro = x4n::plans::resolve_macro("station_gen_hab_t1_01_macro");
+void* conn = x4n::plans::resolve_connection(macro, "connection_room01");
+void* registry = x4n::plans::plan_registry();
+
+// Visibility (x4n_visibility.h)
+bool radar = x4n::visibility::get_radar_visible(entity_id);
+bool on_map = x4n::visibility::is_map_visible(entity_id);
 ```
 
 ### Stash (Reload-Safe In-Memory Storage)

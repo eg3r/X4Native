@@ -10,6 +10,14 @@
 //   - Prefix names with X4 to avoid collision with game-native types
 //   - Note the game version each type was verified against
 //   - Can depend on generated types (include x4_game_types.h first)
+//
+// Sections (match domain headers in x4n_*.h):
+//   FRAMEWORK TYPES      — X4NativeFrameUpdate
+//   ENTITY SYSTEM         — class IDs, component registry RVA, component offsets
+//   SEED / HASH           — LCG constants, session seed RVA
+//   WALKABLE INTERIORS    — X4RoomType enum, room property offsets
+//   CONSTRUCTION PLANS    — MacroData offsets, ConnectionEntry layout, plan entry struct
+//   VISIBILITY            — Object-class and Space-class visibility offsets
 // ==========================================================================
 #pragma once
 
@@ -19,7 +27,8 @@
 extern "C" {
 #endif
 
-// Add manually-authored types below.
+// ======== FRAMEWORK TYPES ================================================
+// X4NativeFrameUpdate — on_native_frame_update payload
 
 // ---- Native frame update event payload (on_native_frame_update) ----
 // Passed as the void* data arg to event callbacks.
@@ -34,6 +43,68 @@ typedef struct X4NativeFrameUpdate {
     bool    is_suspended;   // True if window minimized / lost focus
     int     frame_counter;  // Frame counter since last FPS sample
 } X4NativeFrameUpdate;
+
+// ======== ENTITY SYSTEM ==================================================
+// Engine class IDs, component registry global, component data offsets.
+// Consumed by x4n_entity.h (x4n::entity::find_component).
+
+// ---- Engine class IDs (runtime numeric IDs) ----
+// Resolved at runtime by ClassName_StringToID @ 0x1402D4130, lookup table at 0x1438D2568.
+// Source: GetComponentClassMatrix() runtime dump + decompilation of vtable class checks.
+// Full table (119 entries) in docs/rev/SUBSYSTEMS.md Section 13.2.
+// IDs 0-107 are concrete/leaf classes. IDs 108-118 are abstract hierarchy classes.
+// ID 119 is NOT a class — it is the out-of-range sentinel returned on lookup failure.
+// Verified: v9.00 (runtime dump)
+#define X4_CLASS_CLUSTER          15   /* Cluster — galaxy subdivision, parent of sectors. Created by AddCluster. */
+#define X4_CLASS_NPC              70   /* On-foot NPC character */
+#define X4_CLASS_OBJECT           71   /* Base class for all placed 3D entities */
+#define X4_CLASS_POSITIONAL       75   /* Positional entity (required by Get/SetPositionalOffset) */
+#define X4_CLASS_ROOM             82   /* Walkable interior room */
+#define X4_CLASS_SECTOR           86   /* Sector (checked by SetObjectSectorPos) */
+#define X4_CLASS_STATION          96   /* Station entity */
+#define X4_CLASS_ZONE            107   /* Physics zone / movable space subdivision */
+#define X4_CLASS_CONTAINER       109   /* Abstract: stations and ships that contain entities */
+#define X4_CLASS_CONTROLLABLE    110   /* Abstract: entities that accept orders / can be piloted */
+#define X4_CLASS_SHIP            115   /* Abstract ship class */
+#define X4_CLASS_WALKABLE_MODULE 118   /* Abstract: station modules with walkable interiors */
+#define X4_CLASS_SENTINEL        119   /* NOT a class — BST resolver returns this when name not found */
+
+// ---- Global data RVA: Component registry ----
+// Add to imagebase to get absolute address. Dereference to get the actual value.
+// WARNING: data address changes between builds. Re-verify on game updates.
+// Verified: v9.00 build 600626
+#define X4_RVA_COMPONENT_REGISTRY       0x06C73D30  /* void** — g_ComponentRegistry */
+
+// ---- Component data offsets ----
+// Raw generation seed is at Object+0x08 (uint64). This is the component's OWN seed,
+// before combination with the session seed. Confirmed by 4 independent functions.
+// WARNING: struct offset — fragile across builds. Re-verify on game updates.
+// Verified: v9.00 build 600626
+#define X4_COMPONENT_OFFSET_RAW_SEED       0x08   /* uint64 — raw generation seed */
+#define X4_COMPONENT_OFFSET_COMBINED_SEED  0x3C0  /* int64  — raw_seed + session_seed (= MD $Station.seed) */
+
+// ======== SEED / HASH CONSTANTS ==========================================
+// LCG formula and session seed global.
+// Consumed by x4n_math.h (x4n::math::advance_seed).
+
+// ---- Seed system constants (see docs/rev/WALKABLE_INTERIORS.md §16) ----
+// LCG formula: next = ROR64(seed * multiplier + addend, 30)
+// These are algorithm constants embedded in code, not data references.
+// Likely stable across builds (PRNG design, not tunable), but verify on major engine changes.
+// Found inside MD_EvalSeed_AutoAdvance (0x140C10740 in build 600626).
+// Verified: v9.00 build 600626
+#define X4_SEED_LCG_MULTIPLIER  0x5851F42D4C957F2DULL
+#define X4_SEED_LCG_ADDEND     0x14057B7EF767814FULL
+#define X4_SEED_LCG_ROTATE     30
+
+// ---- Global data RVA: Session seed ----
+// WARNING: data address changes between builds. Re-verify on game updates.
+// Verified: v9.00 build 600626
+#define X4_RVA_SESSION_SEED             0x03C9F9C0  /* uint64* — g_SessionSeed */
+
+// ======== WALKABLE INTERIORS =============================================
+// Room type enum and room property offsets.
+// Consumed by x4n_rooms.h (x4n::rooms::roomtype_name).
 
 // ---- RoomType enum (see docs/rev/WALKABLE_INTERIORS.md §17) ----
 // Enum init at 0x1407521A0, data table at 0x1424794A0, 22 entries.
@@ -63,27 +134,6 @@ typedef enum X4RoomType {
     X4_ROOMTYPE_NONE              = 21,
 } X4RoomType;
 
-// ---- Engine class IDs (runtime numeric IDs) ----
-// Resolved at runtime by ClassName_StringToID @ 0x1402D4130, lookup table at 0x1438D2568.
-// Source: GetComponentClassMatrix() runtime dump + decompilation of vtable class checks.
-// Full table (119 entries) in docs/rev/SUBSYSTEMS.md Section 13.2.
-// IDs 0-107 are concrete/leaf classes. IDs 108-118 are abstract hierarchy classes.
-// ID 119 is NOT a class — it is the out-of-range sentinel returned on lookup failure.
-// Verified: v9.00 (runtime dump)
-#define X4_CLASS_CLUSTER          15   /* Cluster — galaxy subdivision, parent of sectors. Created by AddCluster. */
-#define X4_CLASS_NPC              70   /* On-foot NPC character */
-#define X4_CLASS_OBJECT           71   /* Base class for all placed 3D entities */
-#define X4_CLASS_POSITIONAL       75   /* Positional entity (required by Get/SetPositionalOffset) */
-#define X4_CLASS_ROOM             82   /* Walkable interior room */
-#define X4_CLASS_SECTOR           86   /* Sector (checked by SetObjectSectorPos) */
-#define X4_CLASS_STATION          96   /* Station entity */
-#define X4_CLASS_ZONE            107   /* Physics zone / movable space subdivision */
-#define X4_CLASS_CONTAINER       109   /* Abstract: stations and ships that contain entities */
-#define X4_CLASS_CONTROLLABLE    110   /* Abstract: entities that accept orders / can be piloted */
-#define X4_CLASS_SHIP            115   /* Abstract ship class */
-#define X4_CLASS_WALKABLE_MODULE 118   /* Abstract: station modules with walkable interiors */
-#define X4_CLASS_SENTINEL        119   /* NOT a class — BST resolver returns this when name not found */
-
 // ---- Room property offsets within Room entity (class 82) ----
 // WARNING: These are raw struct offsets — fragile across builds. Any field
 // added/removed/reordered in the Room class will shift these. Re-verify on
@@ -96,20 +146,15 @@ typedef enum X4RoomType {
 #define X4_ROOM_OFFSET_PRIVATE     0x408  /* uint8  — private flag */
 #define X4_ROOM_OFFSET_PERSISTENT  0x409  /* uint8  — persistent flag */
 
-// ---- Component data offsets ----
-// Raw generation seed is at Object+0x08 (uint64). This is the component's OWN seed,
-// before combination with the session seed. Confirmed by 4 independent functions.
-// WARNING: struct offset — fragile across builds. Re-verify on game updates.
-// Verified: v9.00 build 600626
-#define X4_COMPONENT_OFFSET_RAW_SEED       0x08   /* uint64 — raw generation seed */
-#define X4_COMPONENT_OFFSET_COMBINED_SEED  0x3C0  /* int64  — raw_seed + session_seed (= MD $Station.seed) */
+// ======== CONSTRUCTION PLANS =============================================
+// MacroData offsets, ConnectionEntry layout, plan entry struct, plan/macro registry RVAs.
+// Consumed by x4n_plans.h (x4n::plans::resolve_macro, resolve_connection, plan_set_entries).
 
-// ---- Radar Visibility (Object class, type 71 only) ----
-// Two separate byte flags. Read by GetComponentData("isradarvisible") / menu_map.lua.
-// WARNING: struct offsets — fragile across builds. Re-verify on game updates.
-// Verified: v9.00 build 600626,
-#define X4_OBJECT_OFFSET_RADAR_VISIBLE        0x400  /* uint8 — normal radar visibility (0/1) */
-#define X4_OBJECT_OFFSET_FORCED_RADAR_VISIBLE 0x401  /* uint8 — forced radar visibility (satellites, nav beacons) */
+// ---- Global data RVAs: Plan and macro registries ----
+// WARNING: data addresses change between builds. Re-verify on game updates.
+// Verified: v9.00 build 600626
+#define X4_RVA_CONSTRUCTION_PLAN_DB     0x06C73FA0  /* void** — g_ConstructionPlanRegistry (RB-tree at +16) */
+#define X4_RVA_MACRO_REGISTRY           0x06C73E30  /* void*  — g_MacroRegistry (BST at +64) */
 
 // ---- MacroData field offsets ----
 // Returned by MacroRegistry_Lookup. Connection array is sorted by FNV-1a hash.
@@ -200,24 +245,34 @@ typedef struct alignas(16) X4PlanEntry {
 } X4PlanEntry;
 #define X4_PLAN_ENTRY_SIZE  sizeof(X4PlanEntry)  /* 528 */
 
-// ---- Global data RVAs (add to imagebase to get absolute address) ----
-// These are data pointers, not functions. Dereference to get the actual value.
-// WARNING: data addresses change between builds. Re-verify on game updates.
-// Verified: v9.00 build 600626
-#define X4_RVA_COMPONENT_REGISTRY       0x06C73D30  /* void** — g_ComponentRegistry */
-#define X4_RVA_SESSION_SEED             0x03C9F9C0  /* uint64* — g_SessionSeed */
-#define X4_RVA_CONSTRUCTION_PLAN_DB     0x06C73FA0  /* void** — g_ConstructionPlanRegistry (RB-tree at +16) */
-#define X4_RVA_MACRO_REGISTRY           0x06C73E30  /* void*  — g_MacroRegistry (BST at +64) */
+// ======== VISIBILITY =====================================================
+// Object-class and Space-class visibility offsets.
+// Consumed by x4n_visibility.h (x4n::visibility::get_radar_visible, etc.).
 
-// ---- Seed system constants (see docs/rev/WALKABLE_INTERIORS.md §16) ----
-// LCG formula: next = ROR64(seed * multiplier + addend, 30)
-// These are algorithm constants embedded in code, not data references.
-// Likely stable across builds (PRNG design, not tunable), but verify on major engine changes.
-// Found inside MD_EvalSeed_AutoAdvance (0x140C10740 in build 600626).
+// ---- Object-Class Visibility Offsets (type 71: stations, ships, satellites) ----
+// Full layout documented in docs/rev/VISIBILITY.md Section 9.
+// WARNING: struct offsets — fragile across builds. Re-verify on game updates.
 // Verified: v9.00 build 600626
-#define X4_SEED_LCG_MULTIPLIER  0x5851F42D4C957F2DULL
-#define X4_SEED_LCG_ADDEND     0x14057B7EF767814FULL
-#define X4_SEED_LCG_ROTATE     30
+#define X4_OBJECT_OFFSET_OWNER_FACTION_PTR      840    /* void* — owner faction context pointer */
+#define X4_OBJECT_OFFSET_KNOWN_READ             857    /* uint8 — encyclopedia "read" flag */
+#define X4_OBJECT_OFFSET_KNOWN_TO_ALL           858    /* uint8 — global known flag (rarely set) */
+#define X4_OBJECT_OFFSET_KNOWN_FACTIONS_ARR     864    /* 16 bytes — SSO faction pointer array (inline if cap<=2, heap ptr if >2) */
+#define X4_OBJECT_OFFSET_KNOWN_FACTIONS_CAP     880    /* size_t — array capacity (2 = inline) */
+#define X4_OBJECT_OFFSET_KNOWN_FACTIONS_COUNT   888    /* size_t — number of factions in known-to list */
+#define X4_OBJECT_OFFSET_RADAR_VISIBLE          0x400  /* uint8 — normal radar visibility (0/1), set by engine radar scan */
+#define X4_OBJECT_OFFSET_FORCED_RADAR_VISIBLE   0x401  /* uint8 — forced radar visibility (satellites, nav beacons) */
+
+// ---- Space-Class Visibility Offsets (type 15/86/107: clusters, sectors, zones) ----
+// Different offsets from Object-class. No radar bytes (Space entities use known-to only).
+// Full layout documented in docs/rev/VISIBILITY.md Section 9.
+// WARNING: struct offsets — fragile across builds. Re-verify on game updates.
+// Verified: v9.00 build 600626
+#define X4_SPACE_OFFSET_OWNER_FACTION_PTR       800    /* void* — owner faction context pointer */
+#define X4_SPACE_OFFSET_KNOWN_READ              817    /* uint8 — encyclopedia "read" flag */
+#define X4_SPACE_OFFSET_KNOWN_TO_ALL            818    /* uint8 — global known flag */
+#define X4_SPACE_OFFSET_KNOWN_FACTIONS_ARR      824    /* 16 bytes — SSO faction pointer array */
+#define X4_SPACE_OFFSET_KNOWN_FACTIONS_CAP      840    /* size_t — array capacity */
+#define X4_SPACE_OFFSET_KNOWN_FACTIONS_COUNT    848    /* size_t — number of factions in known-to list */
 
 #ifdef __cplusplus
 }

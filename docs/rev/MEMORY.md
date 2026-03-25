@@ -152,16 +152,20 @@ Objects owned entirely by the extension:
 
 ## 4. SDK Usage
 
+The SDK provides typed wrappers in `x4n::memory::` (header: `x4n_memory.h`, also included by `x4native.h`):
+
 ```cpp
-#include <x4native.h>
+#include <x4n_memory.h>  // or <x4native.h>
 
+// Typed single-object allocation (preferred)
+auto* entry = x4n::memory::game_alloc<X4PlanEntry>();
+
+// Typed array allocation
+auto* arr = x4n::memory::game_alloc_array<X4PlanEntry*>(count);
+
+// Raw allocation (low-level, same underlying call)
 auto* g = x4n::game();
-
-// Allocate from game pool (size, 0, 0, 0, alignment)
 void* ptr = g->GameAlloc(528, 0, 0, 0, 16);
-
-// Initialize via game constructor (if one exists for the type)
-// ...
 
 // Do NOT manually free — let the game's lifecycle management handle it.
 // Game destructors (virtual dtor with flag 1 = "delete after destruct")
