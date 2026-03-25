@@ -366,6 +366,13 @@ void* registry = x4n::plans::plan_registry();
 // Visibility (x4n_visibility.h)
 bool radar = x4n::visibility::get_radar_visible(entity_id);
 bool on_map = x4n::visibility::is_map_visible(entity_id);
+x4n::visibility::set_radar_visible(entity_id, false);  // direct byte write
+
+// Radar change event — standard event system, fires on enter/leave radar range
+int h = x4n::on("on_radar_changed", [](const X4RadarChangedEvent* e) {
+    x4n::log::info("radar: %llu -> %d", e->entity_id, (int)e->visible);
+});
+x4n::off(h);
 ```
 
 ### Stash (Reload-Safe In-Memory Storage)

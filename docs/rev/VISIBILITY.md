@@ -253,9 +253,18 @@ The `isradarvisible` byte at component+1024 is written by:
    - Dispatches `RadarVisibilityChangedEvent`
    - Propagates to type-107 children
 
-2. **Game engine update loops** (internal, not directly hookable)
-   - Part of the sector update system that runs radar scans
-   - Updates the byte when entities enter/leave radar range
+2. **Entity constructors** (initialization only)
+   - Entity creation sets +1024 = 0 (default state)
+   - Entity teardown/destruction zeros the entire QWORD at +1024 (vtable method at `0x1407429C0`)
+
+3. **Property change handler** (case 378 in `sub_1409575C0`)
+   - Dispatches `RadarVisibilityChangedEvent` via `sub_140A2D810`
+   - May write +1024 through an indirect property mechanism (not confirmed as direct byte write)
+
+**NOTE:** Exhaustive byte-pattern search (all x86-64 register encodings, byte/dword/qword widths)
+found NO code path that specifically clears +1024 to 0 when an entity leaves radar range.
+The byte appears to persist once set. Entities disappear from the map because the **C++ holomap
+renderer** stops rendering them (see Section 4), not because +1024 is cleared.
 
 Only 2 functions READ this byte:
 - `LuaGlobal_GetComponentData` (`0x14023E190`) -- the Lua property dispatcher
@@ -337,18 +346,30 @@ ENTITY VISIBILITY LIFECYCLE
         |--- Entity leaves radar range?
         |         |
         |         v
-        |    Game engine sets +1024 = 0
-        |    RadarVisibilityChangedEvent dispatched
-        |    Entity disappears from map (unless forced)
+        |    +1024 byte is NOT cleared (no direct write path found in binary)
+        |    RadarVisibilityChangedEvent MAY be dispatched (property handler case 378)
+        |    Entity disappears from MAP because C++ holomap renderer stops
+        |      rendering it (holomap uses live gravidar proximity checks)
         |    BUT still "known" (known-factions persists)
-        |    Entity remains in sector queries, just not displayed
+        |    +1024 may still be 1 (byte persists)
+        |    Entity remains in sector queries, just not displayed on map
         |
         v
   Entity Destroyed / Removed
-    All state cleared with component
+    All state cleared with component (QWORD zero at +1024)
 ```
 
-**Critical implication:** An entity can be "known" (isknown = true) but NOT radar-visible (isradarvisible = false). This happens when a ship was once detected but has left radar range. The entity is still enumerable via `GetAllFactionShips` etc., but won't appear on the map.
+**Map display mechanism:** The C++ holomap renderer (`GetMapRenderedComponents` at `0x1401F3250`)
+maintains its own list of entities to display, computed from live gravidar proximity checks.
+When an entity leaves radar range of all player assets, the holomap stops rendering it. The
+Lua `isObjectValid` filter (`isknown AND isradarvisible`) is a secondary check for the sidebar
+object list. Both must pass for an entity to appear in the sidebar, but the holomap rendering
+is the primary visibility gate for map icons.
+
+**Critical implication:** An entity can be "known" (isknown = true) and still have +1024 = 1
+after leaving radar range (the byte persists). The entity disappears from the map because
+the holomap renderer stops showing it, not because +1024 is cleared. The entity is still
+enumerable via `GetAllFactionShips` etc.
 
 ---
 
@@ -387,24 +408,41 @@ COMPLETE DATA FLOW: Entity -> Map Display
      +------+     +------------+
             |     |
             v     v
-    +-------------------+
-    | MAP FILTER:       |
-    | isknown AND       |
-    | isradarvisible    |
-    | (menu_map:7471)   |
-    +--------+----------+
+    +-------------------------------+
+    | PRIMARY GATE:                 |
+    | C++ Holomap Renderer          |
+    | (GetMapRenderedComponents)    |
+    | Uses live gravidar proximity  |
+    | checks, NOT the +1024 byte   |
+    +--------+----------------------+
              |
      +-------+-------+
      |               |
      v               v
-  PASSES          FAILS
+  RENDERED       NOT RENDERED
      |               |
      v               v
-+---------+    +-----------+
-| SHOWN   |    | HIDDEN    |
-| on map  |    | from map  |
-| and HUD |    |           |
-+---------+    +-----------+
++-----------+    +-----------+
+| SECONDARY |    | HIDDEN    |
+| FILTER:   |    | from map  |
+| isknown   |    | (no icon, |
+| AND       |    | no sidebar|
+| isradarvis|    | entry)    |
+| (Lua side-|    +-----------+
+| bar only) |
++-----+-----+
+      |
+  +---+---+
+  |       |
+  v       v
+PASS    FAIL
+  |       |
+  v       v
++------+ +--------+
+|SHOWN | |HIDDEN  |
+|in    | |from    |
+|sidebar |sidebar |
++------+ +--------+
 
 PARALLEL (INDEPENDENT):
 
@@ -793,9 +831,15 @@ Call `SetKnownTo(id, "player")` + `SetObjectForcedRadarVisible(id, true)` to gua
 ### 16.2 Reading Host Visibility State
 
 No C FFI reader for `isradarvisible`. Options:
-1. **Lua bridge polling:** `GetComponentData(id, "isradarvisible")` via `raise_lua`/`bridge_lua_event`
-2. **Direct memory read:** `*(uint8_t*)(component + 0x400)` -- fast but version-fragile
-3. **IsObjectKnown proxy:** Use `IsObjectKnown(id)` (FFI) as primary filter. Known entities are generally radar-visible.
+1. **Direct memory read:** `*(uint8_t*)(component + 0x400)` via `x4n::visibility::get_radar_visible()` -- fast but version-fragile
+2. **`is_map_visible()`:** Combined check (IsObjectKnown AND radar/forced byte) via `x4n::visibility::is_map_visible()`
+3. **IsObjectKnown proxy:** Use `IsObjectKnown(id)` (FFI) as primary filter for persistent discovery state.
+
+**NOTE:** The +1024 byte may persist after entities leave radar range (no engine clearing found).
+Reading +1024 therefore tells you "has this entity ever been radar-scanned", not "is this entity
+currently in radar range." For current-range detection, the holomap rendering system uses live
+gravidar proximity checks internally. There is no public API to query "is entity currently in
+gravidar range of any player asset" from C++. MD scripts can use `$object.isinliveview` for this.
 
 ### 16.3 Station Ownership and Visibility
 

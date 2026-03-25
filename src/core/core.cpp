@@ -133,6 +133,67 @@ static void remove_frame_tick_hook() {
 }
 
 // ---------------------------------------------------------------------------
+// Radar visibility hook — fires on_radar_changed to extensions
+// ---------------------------------------------------------------------------
+// Direct MinHook detour on the engine's RadarVisibilityChanged_BuildEvent.
+// Called from the sector update property change handler (case 378) when an
+// entity enters or leaves radar range. See docs/rev/VISIBILITY.md Section 3.
+// The original function creates a RadarVisibilityChangedEvent object; we
+// read entity_id and visible from it after it returns.
+
+static void* g_radar_event_trampoline = nullptr;
+
+using RadarEventBuildFn = void*(__fastcall*)(void*);
+
+static void* __fastcall radar_event_detour(void* property_data) {
+    // Call original — creates the event object
+    void* event = reinterpret_cast<RadarEventBuildFn>(g_radar_event_trampoline)(property_data);
+    if (!event) return event;
+
+    // Read event payload
+    auto addr = reinterpret_cast<uintptr_t>(event);
+    X4RadarChangedEvent payload{};
+    payload.entity_id = *reinterpret_cast<uint64_t*>(addr + X4_RADAR_EVENT_OFFSET_ENTITY_ID);
+    payload.visible   = *reinterpret_cast<uint8_t*>(addr + X4_RADAR_EVENT_OFFSET_VISIBLE);
+
+    x4n::EventSystem::fire("on_radar_changed", &payload);
+    return event;
+}
+
+static bool install_radar_visibility_hook() {
+    void* target = x4n::GameAPI::get_internal("RadarVisibilityChanged_BuildEvent");
+    if (!target) {
+        x4n::Logger::warn("Radar visibility hook: RadarVisibilityChanged_BuildEvent not resolved (missing RVA for this build?)");
+        return false;
+    }
+
+    MH_STATUS status = MH_CreateHook(target, &radar_event_detour, &g_radar_event_trampoline);
+    if (status != MH_OK) {
+        x4n::Logger::error("Radar visibility hook: MH_CreateHook failed: {}", MH_StatusToString(status));
+        return false;
+    }
+
+    status = MH_EnableHook(target);
+    if (status != MH_OK) {
+        x4n::Logger::error("Radar visibility hook: MH_EnableHook failed: {}", MH_StatusToString(status));
+        MH_RemoveHook(target);
+        return false;
+    }
+
+    x4n::Logger::info("Radar visibility hook installed (on_radar_changed)");
+    return true;
+}
+
+static void remove_radar_visibility_hook() {
+    void* target = x4n::GameAPI::get_internal("RadarVisibilityChanged_BuildEvent");
+    if (target && g_radar_event_trampoline) {
+        MH_DisableHook(target);
+        MH_RemoveHook(target);
+        g_radar_event_trampoline = nullptr;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Dispatch implementations (called by proxy via function pointers)
 // ---------------------------------------------------------------------------
 
@@ -169,6 +230,7 @@ static void impl_prepare_reload() {
     x4n::Logger::info("Preparing for core hot-reload...");
     x4n::EventSystem::fire("on_before_reload");
     x4n::ExtensionManager::shutdown();
+    remove_radar_visibility_hook();
     remove_frame_tick_hook();
     x4n::HookManager::remove_all();
 }
@@ -176,6 +238,7 @@ static void impl_prepare_reload() {
 static void impl_shutdown() {
     x4n::Logger::info("Core shutting down...");
     x4n::ExtensionManager::shutdown();
+    remove_radar_visibility_hook();
     remove_frame_tick_hook();
     x4n::HookManager::shutdown();
     x4n::GameAPI::shutdown();
@@ -215,6 +278,9 @@ int core_init(CoreInitContext* ctx) {
 
     // 5b. Native frame tick hook (core-owned, fires on_native_frame_update)
     install_frame_tick_hook();
+
+    // 5c. Radar visibility hook (core-owned, fires on_radar_changed)
+    install_radar_visibility_hook();
 
     // 6. Extension manager
     g_raise_lua_event = ctx->raise_lua_event;

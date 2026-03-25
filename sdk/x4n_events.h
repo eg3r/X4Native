@@ -46,6 +46,13 @@ inline int on(const char* name, void(*callback)(const char*)) {
         detail::g_api);
 }
 
+/// Subscribe with a typed X4RadarChangedEvent callback (for on_radar_changed).
+inline int on(const char* name, void(*callback)(const X4RadarChangedEvent*)) {
+    return detail::g_api->subscribe(
+        name, detail::trampoline_radar_changed, reinterpret_cast<void*>(callback),
+        detail::g_api);
+}
+
 /// Subscribe with the raw 3-argument callback and explicit userdata.
 inline int on(const char* name, X4NativeEventCallback callback,
               void* userdata = nullptr) {

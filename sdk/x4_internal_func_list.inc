@@ -74,6 +74,30 @@ X4_FUNC(void*, ConstructionDB_CreatePlanDirect, (void* registry, int source_type
 // Verified: v9.00 build 600626, RVA 0x00D0E4E0
 X4_FUNC(bool, ConstructionDB_AddPlan, (void* registry, int source_type, void* plan))
 
+// RadarVisibilityChanged_BuildEvent — creates a RadarVisibilityChangedEvent when the
+// engine's property system detects a radar visibility transition (entering OR leaving range).
+// Called from the sector update property change handler (case 378 in the jump table).
+// Returns the event object pointer (or 0 on alloc failure). The event is dispatched by
+// the caller via EventDispatch_PriorityQueue after this returns.
+// Event layout: +0 vtable, +8 refcount, +16 reserved, +24 entity ComponentID (uint64), +32 visible (uint8).
+// Hook AFTER to capture: entity = *(uint64*)(retval+24), visible = *(uint8*)(retval+32).
+// Verified: v9.00 build 600626, RVA 0x00A2D810
+X4_FUNC(void*, RadarVisibilityChanged_BuildEvent, (void* property_data))
+
+// IsRadarVisible_ReadByte — reads the radar_visible byte from an Object-class component.
+// Returns *(uint8_t*)(component + 0x400). Tiny 2-instruction function.
+// Only 2 callers: GetComponentData("isradarvisible") and MD property evaluator.
+// Takes raw component pointer (from ComponentRegistry_Find), NOT a UniverseID.
+// Verified: v9.00 build 600626, RVA 0x0011BE30
+X4_FUNC(uint8_t, IsRadarVisible_ReadByte, (void* component))
+
+// SetObjectRadarVisible_Action — MD action handler for `set_object_radar_visible`.
+// Writes bool to component+0x400, dispatches RadarVisibilityChangedEvent, propagates to children.
+// This is the SCRIPT writer (story missions). The engine writes +0x400 via the property system.
+// Takes: a1 = MD action context (object ref at +40), a2/a3 = condition context.
+// Verified: v9.00 build 600626, RVA 0x00B8BD30
+X4_FUNC(void, SetObjectRadarVisible_Action, (void* action_ctx, void* param2, void* param3))
+
 // Controllable::CreateDynamicInterior — creates a corridor+room interior on a station.
 // Called by npc_instantiation during savegame load and by MD create_dynamic_interior action.
 // Params 9-14 are variadic in the original, but on x64 MSVC they occupy the same stack

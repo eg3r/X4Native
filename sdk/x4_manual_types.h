@@ -44,6 +44,16 @@ typedef struct X4NativeFrameUpdate {
     int     frame_counter;  // Frame counter since last FPS sample
 } X4NativeFrameUpdate;
 
+// ======== VISIBILITY EVENT PAYLOAD ========================================
+// Fired as "on_radar_changed" event data when an entity enters or leaves
+// gravidar range. Installed by the framework (core.cpp) via MinHook detour
+// on RadarVisibilityChanged_BuildEvent.
+
+typedef struct X4RadarChangedEvent {
+    uint64_t entity_id;     // ComponentID of the affected entity
+    uint8_t  visible;       // 1 = entered radar range, 0 = left radar range
+} X4RadarChangedEvent;
+
 // ======== ENTITY SYSTEM ==================================================
 // Engine class IDs, component registry global, component data offsets.
 // Consumed by x4n_entity.h (x4n::entity::find_component).
@@ -78,7 +88,7 @@ typedef struct X4NativeFrameUpdate {
 // ---- Component data offsets ----
 // Raw generation seed is at Object+0x08 (uint64). This is the component's OWN seed,
 // before combination with the session seed. Confirmed by 4 independent functions.
-// WARNING: struct offset — fragile across builds. Re-verify on game updates.
+// NOTE: struct offset — update when game build changes.
 // Verified: v9.00 build 600626
 #define X4_COMPONENT_OFFSET_RAW_SEED       0x08   /* uint64 — raw generation seed */
 #define X4_COMPONENT_OFFSET_COMBINED_SEED  0x3C0  /* int64  — raw_seed + session_seed (= MD $Station.seed) */
@@ -135,7 +145,7 @@ typedef enum X4RoomType {
 } X4RoomType;
 
 // ---- Room property offsets within Room entity (class 82) ----
-// WARNING: These are raw struct offsets — fragile across builds. Any field
+// NOTE: These are raw struct offsets — update when game build changes. Any field
 // added/removed/reordered in the Room class will shift these. Re-verify on
 // every game update. Currently only used for documentation; the hook approach
 // reads these via the game's own code paths, not direct memory access.
@@ -221,7 +231,7 @@ typedef enum X4RoomType {
 // counter at 0x1438778A0 if id==0 on construct).
 //
 // See docs/rev/CONSTRUCTION_PLANS.md for full documentation.
-// WARNING: struct layout — fragile across builds. Re-verify on game updates.
+// NOTE: struct layout — update when game build changes.
 // Verified: v9.00 build 600626 (R-Station4 + plan_entry_struct_analysis)
 typedef struct alignas(16) X4PlanEntry {
     int64_t   id;                   // +0:   unique ID (auto-assigned from atomic counter if 0)
@@ -251,7 +261,6 @@ typedef struct alignas(16) X4PlanEntry {
 
 // ---- Object-Class Visibility Offsets (type 71: stations, ships, satellites) ----
 // Full layout documented in docs/rev/VISIBILITY.md Section 9.
-// WARNING: struct offsets — fragile across builds. Re-verify on game updates.
 // Verified: v9.00 build 600626
 #define X4_OBJECT_OFFSET_OWNER_FACTION_PTR      840    /* void* — owner faction context pointer */
 #define X4_OBJECT_OFFSET_KNOWN_READ             857    /* uint8 — encyclopedia "read" flag */
@@ -259,13 +268,21 @@ typedef struct alignas(16) X4PlanEntry {
 #define X4_OBJECT_OFFSET_KNOWN_FACTIONS_ARR     864    /* 16 bytes — SSO faction pointer array (inline if cap<=2, heap ptr if >2) */
 #define X4_OBJECT_OFFSET_KNOWN_FACTIONS_CAP     880    /* size_t — array capacity (2 = inline) */
 #define X4_OBJECT_OFFSET_KNOWN_FACTIONS_COUNT   888    /* size_t — number of factions in known-to list */
-#define X4_OBJECT_OFFSET_RADAR_VISIBLE          0x400  /* uint8 — normal radar visibility (0/1), set by engine radar scan */
+#define X4_OBJECT_OFFSET_RADAR_VISIBLE          0x400  /* uint8 — radar visibility, set by engine property system + MD action */
 #define X4_OBJECT_OFFSET_FORCED_RADAR_VISIBLE   0x401  /* uint8 — forced radar visibility (satellites, nav beacons) */
+
+// ---- RadarVisibilityChangedEvent Layout ----
+// Dispatched by the engine when radar visibility changes on an entity.
+// Three dispatchers: SetForcedRadarVisible_Internal, SetObjectRadarVisible_Action,
+// and the engine property change handler (case 378 in sector update pipeline).
+// Verified: v9.00 build 600626
+#define X4_RADAR_EVENT_VTABLE_RVA           0x02B39848  /* const U::RadarVisibilityChangedEvent::`vftable' */
+#define X4_RADAR_EVENT_OFFSET_ENTITY_ID     24          /* uint64 — ComponentID of affected entity */
+#define X4_RADAR_EVENT_OFFSET_VISIBLE       32          /* uint8  — new visibility state (0=left range, 1=entered range) */
 
 // ---- Space-Class Visibility Offsets (type 15/86/107: clusters, sectors, zones) ----
 // Different offsets from Object-class. No radar bytes (Space entities use known-to only).
 // Full layout documented in docs/rev/VISIBILITY.md Section 9.
-// WARNING: struct offsets — fragile across builds. Re-verify on game updates.
 // Verified: v9.00 build 600626
 #define X4_SPACE_OFFSET_OWNER_FACTION_PTR       800    /* void* — owner faction context pointer */
 #define X4_SPACE_OFFSET_KNOWN_READ              817    /* uint8 — encyclopedia "read" flag */
