@@ -1123,7 +1123,71 @@ The vanilla game's `setup_gamestarts.xml` explicitly iterates all stations with 
 
 ---
 
-## 11. Related Documents
+## 11. Dynamic Interior System
+
+> Added 2025-03-25. Source: IDA decompilation of `Controllable__CreateDynamicInterior`.
+
+### Overview
+
+Dynamic interiors are walkable rooms (bar, manager office, security, etc.) created at runtime inside station modules. Each interior consists of a corridor + room pair attached to a station module via connection points ("doors").
+
+### Creation Flow
+
+The MD action `create_dynamic_interior` dispatches to `Controllable::CreateDynamicInterior` at `0x1404153a0` (3839 bytes).
+
+**Parameters**: station, output, corridor_macro, door_connection, room_macro, roomtype, name, module, seed, persistent, private, unknown, name2.
+
+**Algorithm**:
+1. If `door_connection == NULL`: auto-select from corridor macro's room connections
+   - `MacroData_GetRoomDefaults(corridor_macro)` returns MacroDefaults for "room" class
+   - Connection pointer array at MacroDefaults+1112 (begin) / +1120 (end)
+   - If `seed != 0`: `door_index = seeded_random(&seed, count)` -- **deterministic**
+   - If `seed == 0`: `door_index = tls_random(count)` -- **unpredictable**
+2. Get first connection from room macro (room only has one door typically)
+3. Create nav context entity (virtual_navcontext_macro)
+4. Create room entity via `GameUniverse_CreateRoom`
+5. Set `room.roomtype` at offset +0x2C0
+6. Find window connections on station module (or entire station if module==NULL)
+   - Second `seeded_random` call selects which window to attach corridor to
+7. Call `Entity_EstablishConnection` to link corridor door to station window
+8. Compute corridor+room transforms relative to station
+9. Set persistent/private flags at offsets +1032, +1033, +928
+
+### Seeded Random (LCG)
+
+`seeded_random` at `0x1414839F0`:
+```
+next = ROR64(seed * 0x5851F42D4C957F2D + 0x14057B7EF767814F, 30)
+*seed = next
+return next % count
+```
+
+Identical to `x4n::advance_seed()`. Standard rooms use `seed = station.seed + roomtype_index`.
+
+### Connection Name Strings
+
+Connection names (e.g., "connection_room01") are stored in `ConnectionEntry` structs at offset +16 as `std::string` (MSVC SSO layout). The `UIConstructionPlanEntry.connectionid` field is populated by reading this offset in `GetNumPlannedStationModules` (`0x14019ce00`).
+
+### Door Selection for Standard Rooms
+
+`npc_instantiation.xml` never passes a `door=` parameter. All standard rooms use seed-based auto-selection:
+- Seed formula: `station.seed + lookup.roomtype.list.indexof.{roomtype}`
+- Door index: `advance_seed(seed) % door_count`
+- The `doors=` output of MD `get_room_definition` returns the same ordered connection list
+
+### Key Addresses
+
+| Address | Name | Size |
+|---------|------|------|
+| `0x1404153a0` | `Controllable__CreateDynamicInterior` | 3839 bytes |
+| `0x1414839F0` | `seeded_random` | ~80 bytes |
+| `0x14076bfd0` | `MacroData_GetRoomDefaults` | ~150 bytes |
+| `0x140399580` | `Entity_EstablishConnection` | ~360 bytes |
+| `0x140951D20` | `Connection::Create` (creates U::Connection, 72 bytes) | ~360 bytes |
+
+---
+
+## 12. Related Documents
 
 | Document | Contents |
 |----------|----------|

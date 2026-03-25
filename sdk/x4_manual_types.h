@@ -113,9 +113,32 @@ typedef enum X4RoomType {
 
 // ---- ConnectionEntry layout ----
 // Each entry is 352 bytes (0x160 stride). Sorted by FNV-1a hash at +8.
+// Name string at +16 is std::string (MSVC SSO: inline if len<16, heap ptr if >=16).
+// Confirmed by GetNumPlannedStationModules (0x14019ce00) which reads ConnectionEntry+16
+// to populate UIConstructionPlanEntry.connectionid.
 // Verified: v9.00 build 600626
 #define X4_CONNECTION_ENTRY_SIZE    0x160  /* 352 bytes */
 #define X4_CONNECTION_OFFSET_HASH   0x08   /* uint32 — FNV-1a hash of lowercased name */
+#define X4_CONNECTION_OFFSET_NAME   0x10   /* std::string — connection name (e.g. "connection_room01") */
+
+// ---- Dynamic Interior door selection ----
+// Controllable::CreateDynamicInterior (0x1404153a0) selects a door connection from
+// the corridor macro's "room" class MacroDefaults. The connection pointer array is at
+// MacroDefaults offset +1112 (begin) / +1120 (end).
+// Door selection algorithm when door param is NULL:
+//   if (seed != 0): index = seeded_random(&seed, count)   -- deterministic LCG
+//   if (seed == 0): index = tls_random(count)              -- unpredictable
+// seeded_random (0x1414839F0): next = ROR64(seed*0x5851F42D4C957F2D+0x14057B7EF767814F, 30)
+// This is identical to x4n::advance_seed(). Standard rooms (npc_instantiation) always
+// use seed = station.seed + roomtype_index, so door selection is deterministic.
+// After door selection, a SECOND seeded_random call selects which station window to
+// attach the corridor to.
+// Rooms created with seed=0 (playeroffice, embassy) use TLS random -- non-reproducible.
+//
+// The doors= output of MD get_room_definition returns the same ordered connection list.
+// To replay door selection: advance_seed(station_seed + roomtype_index) % doors.count.
+#define X4_MACRODEFAULTS_OFFSET_ROOM_CONNECTIONS_BEGIN  0x458  /* void** — ConnectionEntry* array begin */
+#define X4_MACRODEFAULTS_OFFSET_ROOM_CONNECTIONS_END    0x460  /* void** — ConnectionEntry* array end */
 
 // ---- Construction plan entry (528 bytes) ----
 // Internal plan entry used by the station construction system.
