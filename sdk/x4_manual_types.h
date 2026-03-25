@@ -104,6 +104,13 @@ typedef enum X4RoomType {
 #define X4_COMPONENT_OFFSET_RAW_SEED       0x08   /* uint64 — raw generation seed */
 #define X4_COMPONENT_OFFSET_COMBINED_SEED  0x3C0  /* int64  — raw_seed + session_seed (= MD $Station.seed) */
 
+// ---- Radar Visibility (Object class, type 71 only) ----
+// Two separate byte flags. Read by GetComponentData("isradarvisible") / menu_map.lua.
+// WARNING: struct offsets — fragile across builds. Re-verify on game updates.
+// Verified: v9.00 build 600626,
+#define X4_OBJECT_OFFSET_RADAR_VISIBLE        0x400  /* uint8 — normal radar visibility (0/1) */
+#define X4_OBJECT_OFFSET_FORCED_RADAR_VISIBLE 0x401  /* uint8 — forced radar visibility (satellites, nav beacons) */
+
 // ---- MacroData field offsets ----
 // Returned by MacroRegistry_Lookup. Connection array is sorted by FNV-1a hash.
 // WARNING: struct offsets — fragile across builds. Re-verify on game updates.
