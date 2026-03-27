@@ -870,7 +870,120 @@ The `isradarvisible` handler checks type 71 (object class) first, then casts and
 
 ---
 
-## 14. Encyclopedia / Faction Discovery
+## 14. Scan State / Reveal Percentage (Third Visibility Layer)
+
+> **Date:** 2026-03-27 | **Source:** IDA + game script analysis
+
+X4 has **three independent visibility layers** that ALL must be set for full map/UI presentation:
+
+| Layer | Controls | API | Default |
+|-------|----------|-----|---------|
+| **Known** | Entity appears on map | `SetKnownTo(id, "player")` / MD `set_known` | Unknown |
+| **Radar** | Gravidar detection, live tracking | `SetObjectForcedRadarVisible(id, true)` | Not visible |
+| **Scanned** | Info reveal %, icon brightness, entity name | MD `set_object_scanned` only | 0% revealed |
+
+### Reveal Percentage
+
+Each entity has a `revealedpercentage` (float, 0.0-1.0). The game's `infounlocklist.xml` defines thresholds per info type:
+
+| Info Type | Required % | Effect if unmet |
+|-----------|-----------|-----------------|
+| Entity name | 1% | Shows "Unknown Object" |
+| Hull/shield | ~25% | Hidden in info panel |
+| Cargo | ~50% | Hidden in trade UI |
+| Full details | 100% | Some stats hidden |
+
+### Map Icon Brightness
+
+The holomap renderer and `menu_map.lua` use reveal percentage for icon rendering:
+- **0% revealed:** `Color["text_inactive"]` (dim/grey icon)
+- **Partially revealed:** Intermediate alpha
+- **100% revealed:** Full brightness icon
+
+`IsInfoUnlockedForPlayer` at `0x14017a870` checks vtable+5976 (has scan data?) then calls `CheckInfoUnlockThreshold` at `0x140605350` which reads reveal level via vtable+6416 and compares against per-info-type thresholds from `infounlocklist.xml`.
+
+### Reveal Percentage Is Computed, Not Stored
+
+**Critical finding:** The reveal percentage is NOT a stored field on entities. It is **computed dynamically** from two values:
+1. **Scan level** (int, 0-6) -- stored in a red-black tree at `engine+77792`, keyed by entity ID
+2. **Secrecy level** (int, 0-3) -- static per entity type, from macro data at offset +1216
+
+The percentage is looked up from a global 4x4 table at `qword_146C7A4C0`, loaded from `infounlocklist.xml`:
+
+| | scan=0 | scan=1 | scan=2 | scan=3+ |
+|---|---|---|---|---|
+| **secrecy=0** | 100 | 100 | 100 | 100 |
+| **secrecy=1** | 50 | 100 | 100 | 100 |
+| **secrecy=2** | 33 | 66 | 100 | 100 |
+| **secrecy=3** | 25 | 50 | 75 | 100 |
+
+Formula: `percentage = table[scan_level + 4 * secrecy_level]`, capped at 100. Player-owned entities always return 100.
+
+**Stations** cache the aggregate percentage at entity offset +3432 (DWORD). This is the "average revealed percentage of all info points" from scriptproperties.xml. Each station module has its own scan state.
+
+### Key Functions (IDA-confirmed)
+
+| Function | Address | Role |
+|----------|---------|------|
+| Object_GetRevealPercentage | `0x1404E7A10` | vtable[802]: computed reveal % |
+| Ship_GetRevealPercentage | `0x1404053B0` | Ship override: thin wrapper |
+| Station_GetRevealPercentage | `0x1407AA8E0` | Station: cached aggregate at +3432 for level=-1 |
+| GetEntityScanLevel | `0x1406EB860` | Reads scan level from RB tree (engine+77792) |
+| GetSecrecyLevel | `0x1404E79C0` | vtable[789]: static from macro data +1216 |
+| ApplyScanToEntity | `0x1406EB900` | **Core setter:** validates + schedules reveal + sets known |
+| ScanEntity_Full | `0x1406F6500` | Full scan for station modules |
+| GetPlayerScannerLevel | `0x1406F5C50` | Player's max scan level from equipment |
+| SetObjectScannedAction_Execute | `0x140B92150` | MD action handler |
+| ScheduleScanReveal | `0x1406E04F0` | Creates timed reveal in ScanManager |
+| CheckInfoUnlockThreshold | `0x140605350` | Compares reveal% against info thresholds |
+
+### `set_object_scanned` (MD Action)
+
+MD script action (no direct C++ FFI equivalent):
+```xml
+<set_object_scanned object="$entity" />
+```
+
+**Correction:** Does NOT always set to 100%. Sets scan level to the **player's scanner equipment level** (from `GetPlayerScannerLevel`). The resulting percentage depends on the entity's secrecy level. For secrecy-3 entities with a level-0 scanner, this only achieves 25%.
+
+Handler: `SetObjectScannedAction::Execute` at `0x140B92150`:
+- For single objects (type 2304): triggers scan visual + dispatches PlayerDetectedObjectEvent
+- For stations: iterates ALL child modules, calls `ScanEntity_Full(engine, module, scanner_level)` per module
+
+Internal path: `ScanEntity_Full` -> `ApplyScanToEntity(engine, entity, scan_level)` -> `ScheduleScanReveal(&entityID, 2, scan_level)` -> creates timed entry in ScanManager at `qword_146C7AEC0`.
+
+### C++ Direct Scan (Alternative to MD)
+
+`ApplyScanToEntity` at `0x1406EB900` can be called directly:
+```
+Signature: bool ApplyScanToEntity(int64 engine, int64 entity, int scan_level)
+```
+- `engine`: from `*(qword_143CA6D68 + 560)` or `qword_143CA27B8`
+- Validates: entity alive (+104==0), not player-owned, permission check
+- Calls ScheduleScanReveal, SetKnownTo, dispatches PlayerDiscoveredComponentEvent
+- Best hook point for intercepting scan events (delta replication)
+
+### Vanilla Pattern
+
+Every entity the game spawns for the player gets all three calls:
+```xml
+<set_known object="$entity" />
+<set_object_scanned object="$entity" />
+<!-- optionally: -->
+<set_object_forced_radar_visible object="$entity" />
+```
+
+### Implication for Multiplayer
+
+**Host side:** Hook `ApplyScanToEntity` (`0x1406EB900`) to detect scan level changes. Broadcast `(entity_id, scan_level)` as a compact int (3 bits, 0-6).
+
+**Client side:** Use MD cue `<set_object_scanned object="$entity" />` for V1 (sets to client's scanner level). For exact fidelity, call `ApplyScanToEntity` directly with the host's scan level.
+
+Proxy entities on the client must call `set_object_scanned` via an MD cue after spawn. Without it, replicated entities appear dim on the map and show "Unknown Object" instead of their real name.
+
+---
+
+## 15. Encyclopedia / Faction Discovery
 
 ### Encyclopedia Known-Item System
 
@@ -891,7 +1004,7 @@ Auto-population: `targetmonitor.lua` calls `AddKnownItem` when the player target
 
 ---
 
-## 15. Edge Cases
+## 16. Edge Cases
 
 ### AI-Suppressed Ships
 
@@ -915,7 +1028,7 @@ Zones (tempzones) that contain player-owned entities are marked known via `Updat
 
 ---
 
-## 16. Replication Implications
+## 17. Replication Implications
 
 For multiplayer mods that replicate visibility across instances. This section is factual about what the engine provides -- specific mod implementation choices are outside this document's scope.
 

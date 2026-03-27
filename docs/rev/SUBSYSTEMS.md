@@ -707,6 +707,24 @@ are optional; confirmed from DLC boron/split usage):
 Name values are MD expressions — literal strings use single quotes (`'text'`), localization
 keys use `'{pageid,textid}'`, and cue-local variables use `$varname`. Dynamic runtime names
 (e.g. player-provided strings passed via signal param) use `event.param` or a variable set
+
+### 12.7 Sector Ownership Recalculation (Engine-Automatic)
+
+> **Date:** 2026-03-27 | **Source:** IDA + `factionlogic.xml` analysis
+
+Sector ownership in X4 is **engine-computed**, not manually set. The game automatically recalculates which faction owns a sector based on **which faction has the most `canclaimownership` stations** in that sector.
+
+**Mechanism:**
+1. `SpawnStationAtPos` (@ `0x1401B8530`) sets owner on the station entity only (via vtable+5720). It does NOT directly set sector ownership.
+2. The engine monitors station creation/destruction events and recalculates sector ownership automatically.
+3. `GetSectorsByOwner` (@ `0x14016EC20`) reads from a per-faction sector registry (tree map at `qword_146C7A398`), which is updated by this recalculation.
+4. The `claimspace` faction tag (see §12.6) controls which factions participate in sector claims. All major NPC factions and the player faction have this tag.
+5. `CanClaimOwnership` (C FFI) checks if a station macro has the claim property (vtable+7648).
+6. `factionlogic.xml` monitors `event_object_changed_owner` on sectors and `event_contained_sector_changed_owner` for galaxy-wide tracking.
+
+**Key implication:** Spawning a player-owned station in an NPC sector will flip sector ownership to "player" if there are no other claim-capable stations. `SetComponentOwner(station, npc_faction)` fixes the station but the engine recalculation may have already fired.
+
+**Map display:** The map reads sector ownership via `GetOwnerDetails(sector_id)` / `GetComponentData(sector, "owner")`. This returns the sector entity's own owner field, which is set by the engine recalculation. `SetComponentOwner(sector_id, faction_id)` can override it (same API used by the map editor).
 before the action fires.
 
 Typical MD cue pattern for extension-controlled activation:
