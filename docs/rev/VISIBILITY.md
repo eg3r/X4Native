@@ -1020,7 +1020,7 @@ Setting `SetObjectForcedRadarVisible(id, true)` does NOT modify the +1024 byte. 
 
 ### Ownership Change and Known State
 
-Changing entity ownership (`SetComponentOwner`) NEVER modifies the known-to list. An entity that was known to the player before ownership change remains known after. However, `UpdatePlayerOwnedTracking` asymmetry means zones may lose their loaded state (see Section 16.3).
+Changing entity ownership (`SetComponentOwner`) NEVER modifies the known-to list. An entity that was known to the player before ownership change remains known after. However, `UpdatePlayerOwnedTracking` asymmetry means zones may lose their loaded state (see Section 17.3).
 
 ### Zone Known State
 
@@ -1032,11 +1032,11 @@ Zones (tempzones) that contain player-owned entities are marked known via `Updat
 
 For multiplayer mods that replicate visibility across instances. This section is factual about what the engine provides -- specific mod implementation choices are outside this document's scope.
 
-### 16.1 Making Spawned Entities Visible
+### 17.1 Making Spawned Entities Visible
 
 Call `SetKnownTo(id, "player")` + `SetObjectForcedRadarVisible(id, true)` to guarantee map/radar visibility. The forced flag at +1025 bypasses the normal +1024 flag entirely.
 
-### 16.2 Reading Host Visibility State
+### 17.2 Reading Host Visibility State
 
 No C FFI reader for `isradarvisible`. Options:
 1. **Direct memory read:** `*(uint8_t*)(component + 0x400)` via `x4n::visibility::get_radar_visible()` -- fast but version-fragile
@@ -1050,25 +1050,25 @@ gravidar proximity checks internally. There is no public API to query "is entity
 gravidar range of any player asset" from C++. MD scripts can use `$object.isinliveview` for this.
 The C++ implementation is `IsInLiveView` @ `0x140695B50` — see Section 2.6 for the three-branch algorithm.
 
-### 16.3 Station Ownership and Visibility
+### 17.3 Station Ownership and Visibility
 
 NPC-owned stations spawned via `SpawnStationAtPos` are invisible due to the `UpdatePlayerOwnedTracking` asymmetry. After `SetComponentOwner(station, npc_faction)`, manually re-apply `SetKnownTo` on the station + zone + sector hierarchy.
 
-### 16.4 Satellite Coverage Divergence
+### 17.4 Satellite Coverage Divergence
 
 Host and client have different deployed satellites. Client cannot rely on host satellite coverage for `iscovered` or normal `isradarvisible`. Use `SetObjectForcedRadarVisible` on client to bypass this entirely.
 
-### 16.5 Sector Discovery Requirement
+### 17.5 Sector Discovery Requirement
 
 Sectors must have their parent cluster also marked known. Gates and highways need individual `SetKnownTo` calls. See `lib_generic.xml` `SetupInitialMap` pattern.
 
-### 16.6 Hook Opportunities
+### 17.6 Hook Opportunities
 
 - **`SetKnownToFaction` (vtable+6016):** Single hook captures ALL discovery from all code paths.
 - **`RadarVisibilityChangedEvent`:** Subscribe via event system for radar changes. **WARNING:** Do NOT hook `RadarVisibilityChanged_BuildEvent` (case 375 in the event switch) — it is a save/load serialization factory and never fires during normal gameplay. Hook `SetObjectRadarVisibleAction_Execute` (`0x140B8DD80`) or `SetForcedRadarVisible_Internal` directly instead. See Section 3.5.
 - **`SetObjectForcedRadarVisible` (FFI):** Hook to intercept forced visibility changes.
 
-### 16.7 Batch Enumeration
+### 17.7 Batch Enumeration
 
 No "get all known objects" API exists. Enumerate per-faction: `GetAllFactionStations(faction)` / `GetAllFactionShips(faction)`, then filter by `IsObjectKnown()`.
 

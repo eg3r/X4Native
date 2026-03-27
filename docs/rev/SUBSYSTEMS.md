@@ -447,19 +447,9 @@ The exact identity of all 17 subsystems has not been determined — runtime anal
 
 ## 8. Component System
 
-Entity lookup uses a global component system:
+> **Full documentation:** [COMPONENT_SYSTEM.md](COMPONENT_SYSTEM.md) — base struct layout, registry, class hierarchy, vtable slots, child container, player slot, galaxy enumeration.
 
-**Global:** `qword_146C6B940` — component system root
-
-```c
-// Reconstructed from CreateOrder3 decompilation
-void* lookup_component(uint64_t component_id) {
-    // Direct lookup via component system — NO LOCKING
-    return component_table[component_id];
-}
-```
-
-This is the same system used by all exported functions that take entity/component IDs. It's a flat lookup table — no tree traversal, no hash map, just index-based access (extremely fast, no allocation).
+Entity lookup uses a global component registry at RVA `0x06C7A148`. O(1) page-based indexing (no hash map). See COMPONENT_SYSTEM.md §5 for details.
 
 ---
 
@@ -580,7 +570,142 @@ SetCustomGameStartPlayerPropertySectorAndOffset(
 
 Note: takes the sector **macro name** string, not a `UniverseID`. Sector macro naming convention: `cluster_NN_sectorNNN_macro` (confirmed from `libraries/gamestarts.xml` v9.00). Use `GetComponentName(sector_universe_id)` on the host to retrieve the macro name for an arbitrary sector.
 
---- 
+### 10.1 X4Component Base Struct & Galaxy Enumeration
+
+> **Full documentation moved to:** [COMPONENT_SYSTEM.md](COMPONENT_SYSTEM.md)
+> - §2: X4Component base struct (11 confirmed fields + vtable slots)
+> - §3: Child container internals (bucketed hash map)
+> - §5: Component registry (UniverseID decomposition)
+> - §6-7: Entity hierarchy, class ID table (119 entries)
+> - §8: Player slot layout + key functions
+> - §9: Galaxy enumeration (FFI-safe + direct child walk)
+> - §10: Proxy NPC spawning
+>
+> SDK type: `X4Component` in `x4_manual_types.h`. SDK helpers: `x4n_entity.h`, `x4n_galaxy.h`.
+
+(Legacy content below retained for reference but canonical source is COMPONENT_SYSTEM.md)
+
+> Reverse-engineered from 15+ decompiled functions. All offsets verified v9.00 build 602526.
+> C struct definition: `x4_manual_types.h` → `typedef struct X4Component`.
+
+All game entities (sectors, clusters, stations, ships, NPCs, zones) share this base layout. Subclass-specific fields (visibility bytes, hull/shield, faction) begin at higher offsets.
+
+```
+Offset  Size  Type              Field              Source Functions
+------  ----  ----              -----              ----------------
++0x00   8     void*             vtable             All (~800+ slots, see vtable section)
++0x08   8     uint64_t          id                 GetClusters_Lua, GetParentComponent,
+                                (UniverseID)       RemoveComponent, ChildComponent_Enumerate
+                                                   NOTE: same field as raw generation seed
++0x10   32    ?                 (unresolved)       No function observed accessing +0x10..+0x2F
++0x30   8     void*             definition         GetComponentName (vtable[3] = GetName)
+                                                   GetComponentData "macro" (vtable[4] = GetMacroName)
+                                                   Embedded sub-object — this ptr = component+0x30
++0x38   8     void*             ctrl_vtable        AddSector: shared_ptr control block vtable
++0x40   4     int32_t (atomic)  ref_count          AddSector: lock xadd [rdi+40h]
++0x44   4     int32_t (atomic)  weak_count         AddSector: lock cmpxchg [rdi+44h] (states 1/2/3)
++0x48   32    ?                 (unresolved)       +0x48..+0x67
++0x68   4     int32_t           class_id           ChildComponent_Enumerate: 1 << *(DWORD*)(child+0x68)
+                                                   Values: X4_CLASS_CLUSTER=15, X4_CLASS_SECTOR=86, etc.
+                                                   NOT a validity flag (was previously misidentified)
++0x6C   4     ?                 (padding)
++0x70   8     X4Component*      parent             GetParentComponent, GetContextByClass,
+                                                   Component_ComputeWorldTransform (parent chain walk)
++0x78   48    ?                 (unresolved)       +0x78..+0xA7
++0xA8   ?     ChildContainer    children           GetClusters_Lua, GetSectors_Lua, GetStationModules
+                                                   Bucketed hash map (32-byte buckets, see §10.1.3)
++0xD1   1     uint8_t           exists             GetSectors_Lua: cmp byte ptr [rax+0D1h], 0
+                                                   0=destroyed, nonzero=alive
++0x3C0  8     int64_t           combined_seed      raw_seed + session_seed (= MD $Station.seed)
+```
+
+#### 10.1.1 Definition Interface (+0x30)
+
+The field at +0x30 is an **embedded sub-object** (not a pointer to an external object). Its vtable pointer lives at +0x30, and `this` for virtual calls is `component + 0x30`.
+
+| Vtable Slot | Byte Offset | Function | Returns |
+|-------------|-------------|----------|---------|
+| 3 | +0x18 | `GetName()` | `std::string*` (display name) |
+| 4 | +0x20 | `GetMacroName()` | `std::string*` (macro identifier) |
+
+```asm
+; GetComponentName (0x140151B60):
+mov     rax, [rbx+30h]       ; load definition vtable
+lea     rcx, [rbx+30h]       ; this = component+0x30
+call    qword ptr [rax+18h]  ; vtable[3] = GetName()
+```
+
+The returned `std::string*` follows MSVC x64 SSO layout: if `capacity` (at str+24) < 16, the string data is inline at str+0; otherwise, str+0 is a heap pointer.
+
+SDK helper: `x4n::entity::get_component_macro(component)`.
+
+#### 10.1.2 Main Vtable Slots
+
+The main vtable at +0x00 has ~800+ entries. Key slots (byte offsets into vtable):
+
+| Slot | Byte Offset | Function | Confirmed By |
+|------|-------------|----------|-------------|
+| 17 | +136 | `GetClassType() -> uint` | Multiple functions |
+| 565 | +4520 | `GetClassID() -> uint` (119=sentinel) | `GetComponentClass` |
+| 566 | +4528 | `IsClassID(classid) -> bool` | `GetStationModules`, `ChildComponent_Enumerate` |
+| 567 | +4536 | `IsOrDerivedFromClassID(classid) -> bool` | `GetContextByClass`, `IsComponentClass` |
+| 594 | +4752 | `GetIDCode() -> std::string*` | `GetObjectIDCode` |
+| 642 | +5136 | `SetWorldTransform(...)` | `Component_ComputeWorldTransform` |
+| 647 | +5176 | `SetPosition(transform*)` | `SetObjectSectorPos` |
+| 675 | +5400 | `Destroy(reason, flags)` | `RemoveComponent` |
+| 700 | +5600 | `GetFactionID() -> int` | `GetAllFactionStations` |
+
+#### 10.1.3 Child Container (+0xA8)
+
+The child container is a **bucketed hash map**, NOT a simple vector or linked list. Internal layout:
+
+```
+container + 0x00: bucket_array_begin  (pointer to array of 32-byte buckets)
+container + 0x08: bucket_array_end
+container + 0x10: ?
+container + 0x18: count
+
+Each bucket (32 bytes):
+  +0x00: child_ptr_begin  (pointer to array of X4Component*)
+  +0x08: child_ptr_end
+  +0x10: ?
+  +0x18: count
+```
+
+Children are filtered by class bitmask: `1 << *(DWORD*)(child + 0x68)`. The enumerator checks each bucket's children against the bitmask.
+
+**Do NOT walk manually.** Use `ChildComponent_Enumerate` (`0x1402F9B80`, 61 callers) or the safe FFI approach (`GetSectorsByOwner` per faction).
+
+Key internal functions:
+
+| Function | Address | Purpose |
+|----------|---------|---------|
+| `ChildComponent_Enumerate` | `0x1402F9B80` | Iterate children with class bitmask filter |
+| `ChildComponent_Iterator_Init` | `0x1402FF740` | Initialize bucket iterator |
+| `ChildComponent_Iterator_Next` | `0x1402F9AA0` | Advance to next matching child |
+| `ChildComponent_GetBucketCount` | `0x1402E5120` | Read bucket count from container |
+
+#### 10.1.4 ComponentID Decomposition
+
+`ComponentRegistry_Find` (`0x1400CE810`) decomposes a UniverseID:
+- Bits 0-24: slot index (1-based)
+- Bits 25-40: generation counter
+
+The registry has up to 32 pages, ~1M entries per page, 3 entries packed per 32-byte block. The third parameter to `ComponentRegistry_Find` is a class mask (4 = general component lookup).
+
+### 10.2 Galaxy Tree Enumeration
+
+`GetClusters` (`0x140264060`) and `GetSectors` (`0x1402642C0`) are **Lua globals only** — NOT available as C FFI. The X4Native SDK provides `x4n::galaxy::rebuild_cache()` which enumerates sectors via `GetSectorsByOwner` (C FFI) + `x4n::entity::get_component_macro()` (offset-based).
+
+For direct child tree walking (bypasses known-to filtering):
+1. Galaxy: `GetPlayerGalaxyID()` (C FFI) → `find_component()` → object pointer
+2. Clusters: walk `galaxy + 0xA8` child container, filter class 15
+3. Sectors: walk `cluster + 0xA8` child container, filter class 86
+4. ID: `component + 0x08`, macro: `component + 0x30` vtable[4]
+
+**`g_GameUniverse`** at RVA `0x03CA6D68` (build 602526). Safer entry: `GetPlayerGalaxyID()`.
+
+---
 
 ## 12. Faction System
 
@@ -767,6 +892,9 @@ Signal from C++ via `x4n::raise_lua("MyExt_ActivateFaction_signal", ...)` or fro
 ---
 
 ## 13. Entity Class System — On-Foot / Player Entity Layout
+
+> **Canonical documentation:** [COMPONENT_SYSTEM.md](COMPONENT_SYSTEM.md) §4-8.
+> Content below retained for reference.
 
 ### 13.1 Virtual Class Check
 

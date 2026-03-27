@@ -12,8 +12,7 @@
 //   x4n::visibility::get_known_factions_count() — read faction count
 //   x4n::visibility::get_space_known_to_all() — Space-class known_to_all
 //   x4n::visibility::get_space_known_factions_count() — Space-class faction count
-//   x4n::visibility::radar_event_entity()     — read entity ID from RadarVisibilityChangedEvent
-//   x4n::visibility::radar_event_visible()    — read visible bool from RadarVisibilityChangedEvent
+//   (radar_event_entity/visible removed — use X4RadarChangedEvent struct directly)
 //
 // Event subscription (via standard event system, NOT this header):
 //   x4n::on("on_radar_changed", [](const X4RadarChangedEvent* e) { ... });
@@ -40,9 +39,9 @@ namespace x4n { namespace visibility {
 /// NOTE: Only valid for Object-class entities (stations, ships, satellites -- type 71).
 ///       Space-class entities (clusters, sectors, zones) have no radar byte.
 /// @stability raw memory offset — X4Native handles version updates (0x400). Re-verify on game updates.
-/// @verified v9.00 build 600626
+/// @verified v9.00 build 602526
 inline bool get_radar_visible(uint64_t id) {
-    void* comp = entity::find_component(id);
+    auto* comp = entity::find_component(id);
     if (!comp) return false;
     return *reinterpret_cast<uint8_t*>(
         reinterpret_cast<uintptr_t>(comp) + X4_OBJECT_OFFSET_RADAR_VISIBLE) != 0;
@@ -52,9 +51,9 @@ inline bool get_radar_visible(uint64_t id) {
 /// This is the persistent override set by SetObjectForcedRadarVisible (satellites, nav beacons).
 /// Returns false if the entity pointer can't be resolved.
 /// @stability raw memory offset — X4Native handles version updates (0x401). Re-verify on game updates.
-/// @verified v9.00 build 600626
+/// @verified v9.00 build 602526
 inline bool get_forced_radar_visible(uint64_t id) {
-    void* comp = entity::find_component(id);
+    auto* comp = entity::find_component(id);
     if (!comp) return false;
     return *reinterpret_cast<uint8_t*>(
         reinterpret_cast<uintptr_t>(comp) + X4_OBJECT_OFFSET_FORCED_RADAR_VISIBLE) != 0;
@@ -70,13 +69,13 @@ inline bool get_forced_radar_visible(uint64_t id) {
 /// Uses C FFI IsObjectKnown for the known check, direct memory for radar.
 /// Returns false if game API unavailable or entity not found.
 /// @stability C FFI + raw memory offsets — X4Native handles version updates.
-/// @verified v9.00 build 600626
+/// @verified v9.00 build 602526
 inline bool is_map_visible(uint64_t id) {
     auto* g = game();
     if (!g || !g->IsObjectKnown) return false;
     if (!g->IsObjectKnown(id)) return false;
     // Radar check: either engine-set or forced
-    void* comp = entity::find_component(id);
+    auto* comp = entity::find_component(id);
     if (!comp) return false;
     auto addr = reinterpret_cast<uintptr_t>(comp);
     uint8_t radar  = *reinterpret_cast<uint8_t*>(addr + X4_OBJECT_OFFSET_RADAR_VISIBLE);
@@ -87,9 +86,9 @@ inline bool is_map_visible(uint64_t id) {
 /// Read the known_to_all flag from an Object-class entity (+858).
 /// When true, the entity is known to ALL factions unconditionally.
 /// @stability raw memory offset — X4Native handles version updates (858). Re-verify on game updates.
-/// @verified v9.00 build 600626
+/// @verified v9.00 build 602526
 inline bool get_known_to_all(uint64_t id) {
-    void* comp = entity::find_component(id);
+    auto* comp = entity::find_component(id);
     if (!comp) return false;
     return *reinterpret_cast<uint8_t*>(
         reinterpret_cast<uintptr_t>(comp) + X4_OBJECT_OFFSET_KNOWN_TO_ALL) != 0;
@@ -100,7 +99,7 @@ inline bool get_known_to_all(uint64_t id) {
 /// @stability raw memory offset — X4Native handles version updates (904). Re-verify on game updates.
 /// @verified v9.00 build 602526
 inline size_t get_known_factions_count(uint64_t id) {
-    void* comp = entity::find_component(id);
+    auto* comp = entity::find_component(id);
     if (!comp) return 0;
     return *reinterpret_cast<size_t*>(
         reinterpret_cast<uintptr_t>(comp) + X4_OBJECT_OFFSET_KNOWN_FACTIONS_COUNT);
@@ -109,9 +108,9 @@ inline size_t get_known_factions_count(uint64_t id) {
 /// Read the known_to_all flag from a Space-class entity (+818).
 /// Space-class: clusters (type 15), sectors (type 86), zones (type 107).
 /// @stability raw memory offset — X4Native handles version updates (818). Re-verify on game updates.
-/// @verified v9.00 build 600626
+/// @verified v9.00 build 602526
 inline bool get_space_known_to_all(uint64_t id) {
-    void* comp = entity::find_component(id);
+    auto* comp = entity::find_component(id);
     if (!comp) return false;
     return *reinterpret_cast<uint8_t*>(
         reinterpret_cast<uintptr_t>(comp) + X4_SPACE_OFFSET_KNOWN_TO_ALL) != 0;
@@ -119,9 +118,9 @@ inline bool get_space_known_to_all(uint64_t id) {
 
 /// Read the known_factions_count from a Space-class entity (+848).
 /// @stability raw memory offset — X4Native handles version updates (848). Re-verify on game updates.
-/// @verified v9.00 build 600626
+/// @verified v9.00 build 602526
 inline size_t get_space_known_factions_count(uint64_t id) {
-    void* comp = entity::find_component(id);
+    auto* comp = entity::find_component(id);
     if (!comp) return 0;
     return *reinterpret_cast<size_t*>(
         reinterpret_cast<uintptr_t>(comp) + X4_SPACE_OFFSET_KNOWN_FACTIONS_COUNT);
@@ -131,9 +130,9 @@ inline size_t get_space_known_factions_count(uint64_t id) {
 // Radar visibility write — set the +0x400 byte directly on a component.
 // Use for testing or when the engine's property system is not appropriate.
 // Does NOT dispatch RadarVisibilityChangedEvent (use SetObjectRadarVisible MD action for that).
-// @verified v9.00 build 600626
+// @verified v9.00 build 602526
 inline void set_radar_visible(uint64_t id, bool visible) {
-    void* comp = entity::find_component(id);
+    auto* comp = entity::find_component(id);
     if (!comp) return;
     *reinterpret_cast<uint8_t*>(
         reinterpret_cast<uintptr_t>(comp) + X4_OBJECT_OFFSET_RADAR_VISIBLE) = visible ? 1 : 0;
@@ -152,20 +151,14 @@ inline void set_radar_visible(uint64_t id, bool visible) {
 //   });
 //   x4n::off(id);
 //
-// @verified v9.00 build 600626
+// @verified v9.00 build 602526
 // ---------------------------------------------------------------------------
 
-/// Extract the entity ComponentID from a RadarVisibilityChangedEvent object.
-inline uint64_t radar_event_entity(void* event) {
-    return *reinterpret_cast<uint64_t*>(
-        reinterpret_cast<uintptr_t>(event) + X4_RADAR_EVENT_OFFSET_ENTITY_ID);
-}
-
-/// Extract the new visibility state from a RadarVisibilityChangedEvent object.
-/// true = entity entered radar range, false = entity left radar range.
-inline bool radar_event_visible(void* event) {
-    return *reinterpret_cast<uint8_t*>(
-        reinterpret_cast<uintptr_t>(event) + X4_RADAR_EVENT_OFFSET_VISIBLE) != 0;
-}
+// NOTE: radar_event_entity() and radar_event_visible() were removed.
+// The X4Native event system extracts the payload into X4RadarChangedEvent before
+// dispatching. Use the struct fields directly in your event handler:
+//   x4n::on("on_radar_changed", [](const X4RadarChangedEvent* e) {
+//       uint64_t id = e->entity_id;  bool vis = e->visible;
+//   });
 
 }} // namespace x4n::visibility

@@ -58,10 +58,62 @@ typedef struct X4RadarChangedEvent {
 // Engine class IDs, component registry global, component data offsets.
 // Consumed by x4n_entity.h (x4n::entity::find_component).
 
+// ---- X4Component: Base type for all game entities ----
+// Sectors, clusters, stations, ships, NPCs, zones all share this base layout.
+// Subclasses extend with additional fields past the base region.
+// This is a READ-ONLY VIEW over game-engine-owned memory. Components are
+// allocated by the game's ComponentFactory — never construct X4Component yourself.
+// Obtain pointers via x4n::entity::find_component(id).
+// Layout confirmed by decompiling 15+ functions (see docs/rev/COMPONENT_SYSTEM.md §2).
+// Verified: v9.00 build 602526
+// Embedded definition interface at X4Component+0x30.
+// Has its own vtable. this ptr = &component->definition.
+// vtable[3] = GetName(), vtable[4] = GetMacroName() — both return MSVC std::string*.
+typedef struct X4DefinitionInterface {
+    void** vtable;
+#ifdef __cplusplus
+    /// Call vtable[3] GetName() — returns raw std::string* (caller handles SSO).
+    void* GetName()      { return reinterpret_cast<void*(*)(X4DefinitionInterface*)>(vtable[3])(this); }
+    /// Call vtable[4] GetMacroName() — returns raw std::string* (caller handles SSO).
+    void* GetMacroName() { return reinterpret_cast<void*(*)(X4DefinitionInterface*)>(vtable[4])(this); }
+#endif
+} X4DefinitionInterface;
+
+typedef struct X4Component {
+    void*     vtable;            // +0x00: main vtable (~800+ slots, see X4_VTABLE_* constants)
+    uint64_t  id;                // +0x08: UniverseID (also raw generation seed — dual purpose)
+    uint8_t   _pad_10[0x20];    // +0x10..+0x2F: internal engine bookkeeping (unresolved)
+    X4DefinitionInterface definition; // +0x30: embedded sub-object (8 bytes — just the vtable ptr)
+    void*     ctrl_vtable;       // +0x38: shared_ptr control block vtable
+    int32_t   ref_count;         // +0x40: atomic reference count
+    int32_t   weak_count;        // +0x44: atomic weak ref / lifecycle state (1->2->3)
+    uint8_t   _pad_48[0x20];    // +0x48..+0x67: unresolved
+    int32_t   class_id;          // +0x68: runtime class ID (X4_CLASS_* values)
+    uint8_t   _pad_6C[0x04];    // +0x6C..+0x6F: padding
+    void*     parent;            // +0x70: parent X4Component* (null for galaxy root)
+    uint8_t   _pad_78[0x30];    // +0x78..+0xA7: unresolved (48 bytes)
+    void*     children;          // +0xA8: bucketed child container (hash map, 32-byte buckets)
+    uint8_t   _pad_B0[0x21];    // +0xB0..+0xD0: unresolved
+    uint8_t   exists;            // +0xD1: existence flag (0=destroyed, nonzero=alive)
+} X4Component;
+
+#ifdef __cplusplus
+static_assert(offsetof(X4Component, id)         == 0x08, "X4Component::id offset mismatch");
+static_assert(offsetof(X4Component, definition) == 0x30, "X4Component::definition offset mismatch");
+static_assert(offsetof(X4Component, ref_count)  == 0x40, "X4Component::ref_count offset mismatch");
+static_assert(offsetof(X4Component, class_id)   == 0x68, "X4Component::class_id offset mismatch");
+static_assert(offsetof(X4Component, parent)     == 0x70, "X4Component::parent offset mismatch");
+static_assert(offsetof(X4Component, children)   == 0xA8, "X4Component::children offset mismatch");
+static_assert(offsetof(X4Component, exists)     == 0xD1, "X4Component::exists offset mismatch");
+#endif
+
+// Component registry — opaque, accessed only via ComponentRegistry_Find.
+typedef struct X4ComponentRegistry_ X4ComponentRegistry;
+
 // ---- Engine class IDs (runtime numeric IDs) ----
 // Resolved at runtime by ClassName_StringToID @ 0x1402D4130, lookup table at 0x1438D2568.
 // Source: GetComponentClassMatrix() runtime dump + decompilation of vtable class checks.
-// Full table (119 entries) in docs/rev/SUBSYSTEMS.md Section 13.2.
+// Full table (119 entries) in docs/rev/COMPONENT_SYSTEM.md §7.
 // IDs 0-107 are concrete/leaf classes. IDs 108-118 are abstract hierarchy classes.
 // ID 119 is NOT a class — it is the out-of-range sentinel returned on lookup failure.
 // Verified: v9.00 (runtime dump)
@@ -85,13 +137,63 @@ typedef struct X4RadarChangedEvent {
 // Verified: v9.00 build 602526 (confirmed via ComponentRegistry_Find callers)
 #define X4_RVA_COMPONENT_REGISTRY       0x06C7A148  /* void** — g_ComponentRegistry */
 
-// ---- Component data offsets ----
-// Raw generation seed is at Object+0x08 (uint64). This is the component's OWN seed,
-// before combination with the session seed. Confirmed by 4 independent functions.
-// NOTE: struct offset — update when game build changes.
-// Verified: v9.00 build 602526 (0x3C0 confirmed by Component_GetCombinedSeed byte sig)
-#define X4_COMPONENT_OFFSET_RAW_SEED       0x08   /* uint64 — raw generation seed */
+// ---- Component base struct offsets ----
+// X4Component is the base type for all game entities. Layout confirmed by
+// decompiling 15+ functions (see docs/rev/COMPONENT_SYSTEM.md §4).
+// NOTE: struct offsets — update when game build changes.
+// Verified: v9.00 build 602526
+#define X4_COMPONENT_OFFSET_RAW_SEED       0x08   /* uint64 — raw generation seed (same field as ID) */
+#define X4_COMPONENT_OFFSET_ID             0x08   /* uint64 — UniverseID (same field as RAW_SEED) */
+#define X4_COMPONENT_OFFSET_DEFINITION     0x30   /* void*  — embedded DefinitionInterface vtable ptr */
+                                                   /*          vtable[3] = GetName() -> std::string*   */
+                                                   /*          vtable[4] = GetMacroName() -> std::string* */
+#define X4_COMPONENT_OFFSET_CTRL_VTABLE    0x38   /* void*  — shared_ptr control block vtable */
+#define X4_COMPONENT_OFFSET_REF_COUNT      0x40   /* int32  — atomic reference count */
+#define X4_COMPONENT_OFFSET_WEAK_COUNT     0x44   /* int32  — atomic weak ref / lifecycle state (1->2->3) */
+#define X4_COMPONENT_OFFSET_CLASS_ID       0x68   /* int32  — runtime class ID (X4_CLASS_* values) */
+                                                   /*          child enumerator uses: 1 << class_id       */
+                                                   /*          NOT a validity flag (was previously misidentified) */
+#define X4_COMPONENT_OFFSET_PARENT         0x70   /* void*  — parent X4Component* (null for galaxy root) */
+                                                   /*          parent->+0x08 = parent UniverseID           */
+#define X4_COMPONENT_OFFSET_CHILDREN       0xA8   /* void*  — bucketed child container (see below) */
+#define X4_COMPONENT_OFFSET_EXISTS         0xD1   /* uint8  — existence flag (0=destroyed, nonzero=alive) */
+                                                   /*          confirmed by GetSectors_Lua: cmp [rax+0D1h],0 */
 #define X4_COMPONENT_OFFSET_COMBINED_SEED  0x3C0  /* int64  — raw_seed + session_seed (= MD $Station.seed) */
+
+// ---- Component main vtable slot offsets (byte offsets into vtable) ----
+// The main vtable at +0x00 has ~800+ slots. Key slots:
+// Verified: v9.00 build 602526 (multiple function decompilations)
+#define X4_VTABLE_GET_CLASS_TYPE      136   /* slot 17:  GetClassType() -> uint */
+#define X4_VTABLE_GET_CLASS_ID       4520   /* slot 565: GetClassID() -> uint (119=sentinel) */
+#define X4_VTABLE_IS_CLASS_ID        4528   /* slot 566: IsClassID(classid) -> bool */
+#define X4_VTABLE_IS_DERIVED_CLASS   4536   /* slot 567: IsOrDerivedFromClassID(classid) -> bool */
+#define X4_VTABLE_GET_ID_CODE        4752   /* slot 594: GetIDCode() -> std::string* */
+#define X4_VTABLE_SET_WORLD_XFORM    5136   /* slot 642: SetWorldTransform(...) */
+#define X4_VTABLE_SET_POSITION       5176   /* slot 647: SetPosition(transform*) */
+#define X4_VTABLE_DESTROY            5400   /* slot 675: Destroy(reason, flags) */
+#define X4_VTABLE_GET_FACTION_ID     5600   /* slot 700: GetFactionID() -> int */
+
+// ---- Child container internal layout (at COMPONENT_OFFSET_CHILDREN) ----
+// The child container is a bucketed hash map, NOT a simple vector.
+// Each bucket is 32 bytes: {child_array_begin, child_array_end, ?, count}.
+// Children are filtered by class bitmask: 1 << *(DWORD*)(child + 0x68).
+// Use ChildComponent_Enumerate (0x1402F9B80) to iterate; do not walk manually.
+// Key internal addresses (for reference, not for direct use):
+//   ChildComponent_Enumerate:       0x1402F9B80 (61 callers)
+//   ChildComponent_Iterator_Init:   0x1402FF740
+//   ChildComponent_Iterator_Next:   0x1402F9AA0
+//   ChildComponent_GetBucketCount:  0x1402E5120
+
+// ---- Component ID decomposition (ComponentRegistry_Find @ 0x1400CE810) ----
+// UniverseID layout: bits 0-24 = slot index (1-based), bits 25-40 = generation counter.
+// Registry has up to 32 pages, ~1M entries per page, 3 entries packed per 32-byte block.
+// Third param to ComponentRegistry_Find is class mask (4 = general component lookup).
+
+// ---- Galaxy global ----
+// WARNING: data address changes between builds. Re-verify on game updates.
+// Verified: v9.00 build 602526 (GetClusters_Lua at 0x140264060)
+#define X4_RVA_GAME_UNIVERSE            0x03CA6D68  /* void** — g_GameUniverse */
+#define X4_GAME_UNIVERSE_GALAXY_OFFSET  552         /* *(g_GameUniverse + 552) = galaxy component ptr */
 
 // ======== SEED / HASH CONSTANTS ==========================================
 // LCG formula and session seed global.
@@ -265,9 +367,9 @@ typedef struct alignas(16) X4PlanEntry {
 #define X4_OBJECT_OFFSET_OWNER_FACTION_PTR      840    /* void* — owner faction context pointer */
 #define X4_OBJECT_OFFSET_KNOWN_READ             857    /* uint8 — encyclopedia "read" flag */
 #define X4_OBJECT_OFFSET_KNOWN_TO_ALL           858    /* uint8 — global known flag (rarely set) */
-#define X4_OBJECT_OFFSET_KNOWN_FACTIONS_ARR     864    /* 32 bytes — SSO faction pointer array (inline if cap<=4, heap ptr if >4) */
-#define X4_OBJECT_OFFSET_KNOWN_FACTIONS_CAP     896    /* size_t — array capacity (4 = inline) */
-#define X4_OBJECT_OFFSET_KNOWN_FACTIONS_COUNT   904    /* size_t — number of factions in known-to list */
+#define X4_OBJECT_OFFSET_KNOWN_FACTIONS_ARR     864    /* 16 bytes — SSO faction pointer array (inline if cap<=2, heap ptr if >2) */
+#define X4_OBJECT_OFFSET_KNOWN_FACTIONS_CAP     880    /* size_t — array capacity (2 = inline SSO) */
+#define X4_OBJECT_OFFSET_KNOWN_FACTIONS_COUNT   888    /* size_t — number of factions in known-to list */
 #define X4_OBJECT_OFFSET_LIVEVIEW_LOCAL         0x3C8  /* uint8 — local gravidar visibility (set when entity scanned in player's zone) */
 #define X4_OBJECT_OFFSET_LIVEVIEW_MONITOR       0x3C9  /* uint8 — remote monitor visibility (set when entity visible via remote observation) */
 #define X4_OBJECT_OFFSET_MASSTRAFFIC_QUEUE      0x3E0  /* ptr   — mass traffic queue object (null if not in mass traffic) */

@@ -24,6 +24,7 @@
 //   #include <x4n_memory.h>      // x4n::memory::game_alloc, game_alloc_array (SMem pool)
 //   #include <x4n_plans.h>       // x4n::plans::resolve_macro, plan_registry, plan_set_entries, ...
 //   #include <x4n_visibility.h>  // x4n::visibility::get_radar_visible, is_map_visible, ...
+//   #include <x4n_galaxy.h>      // x4n::galaxy::find_sector_by_macro, rebuild_cache, ...
 //
 // Minimal extension (events only):
 //
@@ -63,4 +64,5 @@
 #include "x4n_rooms.h"
 #include "x4n_plans.h"
 #include "x4n_visibility.h"
+#include "x4n_galaxy.h"
 
