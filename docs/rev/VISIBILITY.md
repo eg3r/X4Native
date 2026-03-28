@@ -1,6 +1,6 @@
 # X4 Visibility, Fog of War, and Radar Coverage Systems
 
-> **Binary:** X4.exe v9.00 (builds 600626, 602526) | **Date:** 2026-03-26
+> **Binary:** X4.exe v9.00 | **Date:** 2026-03-26
 >
 > All addresses are absolute (imagebase `0x140000000`). Subtract imagebase to get RVA.
 >
@@ -177,15 +177,15 @@ When the player has gravidar access to an NPC object (e.g., via a trade deal or 
 
 `isinliveview` is the high-level "is this entity currently detected by any player asset" check. It is more comprehensive than the simple `isradarvisible` byte because it accounts for gravidar access grants and player-owned assets.
 
-#### Confirmed Internals (2026-03-26)
+#### Confirmed Internals (2026-03-28, re-verified via decompilation)
 
-**Handler:** GetComponentData hash `0x32EDC1D9173B5D59` at `0x14023FDE6`. Requires type 71 (Object).
-Calls `IsInLiveView` @ `0x140695B50`, returns boolean.
+**Handler:** GetComponentData hash `0x32EDC1D9173B5D59` at `0x140240E73`. Requires type 71 (Object).
+Calls `IsInLiveView` @ `0x140697170`, returns boolean.
 
 **`IsInLiveView` is NOT a byte read.** It is a three-branch priority evaluation:
 
 ```
-IsInLiveView(component) @ 0x140695B50
+IsInLiveView(component) @ 0x140697170
 ===========================================
 
 Branch 1: IsPlayerOwnedOrTracked(component)?  --> return TRUE
@@ -795,7 +795,12 @@ When `cap == 2`, the two faction pointers are stored inline at `known_factions_a
 | `Gravidar_ProcessContacts` | `0x14106C080` | | Processes live contact list after scan |
 | `EventSource_DispatchEvent` | `0x140956B50` | | Generic event dispatch (used by radar visibility events) |
 | `SetObjectRadarVisibleAction_Execute` | `0x140B8DD80` | | MD action execute for `set_object_radar_visible` (dispatches RadarVisibilityChangedEvent) |
-| `IsInLiveView` | `0x140695B50` | | Three-branch priority eval: player-owned/tracked, zone proximity (+0x3C8), remote monitor (+0x3C9) |
+| `IsInLiveView` | `0x140697170` | | Three-branch priority eval: player-owned/tracked, zone proximity (+0x3C8), remote monitor (+0x3C9). Re-verified 2026-03-28. |
+| `IsPlayerOwnedOrTracked` | `0x1406A07D0` | | Branch 1 of IsInLiveView: owner==g_PlayerFaction, player occupancy, or tracking table |
+| `OnEnterLocalZoneVisibility` | `0x140692A90` | | Vtable handler: sets entity+0x3C8=1, registers in tracking system |
+| `OnLeaveLocalZoneVisibility` | `0x140692B10` | | Vtable handler: clears entity+0x3C8=0 |
+| `OnEnterRemoteMonitoring` | `0x140692BA0` | | Vtable handler: sets entity+0x3C9=1 (satellite visibility) |
+| `OnLeaveRemoteMonitoring` | `0x140692C20` | | Vtable handler: clears entity+0x3C9=0 |
 
 ### Known-State Vtable Map
 
@@ -1077,7 +1082,7 @@ Reading +1024 therefore tells you "has this entity ever been radar-scanned", not
 currently in radar range." For current-range detection, the holomap rendering system uses live
 gravidar proximity checks internally. There is no public API to query "is entity currently in
 gravidar range of any player asset" from C++. MD scripts can use `$object.isinliveview` for this.
-The C++ implementation is `IsInLiveView` @ `0x140695B50` — see Section 2.6 for the three-branch algorithm.
+The C++ implementation is `IsInLiveView` @ `0x140697170` — see Section 2.6 for the three-branch algorithm.
 
 ### 17.3 Station Ownership and Visibility
 

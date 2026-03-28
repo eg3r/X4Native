@@ -1,6 +1,6 @@
 # X4 Player & Entity API — Reverse Engineering Notes
 
-> **Binary:** X4.exe v9.00 (build 900) · **Date:** 2026-03
+> **Binary:** X4.exe v9.00 · **Date:** 2026-03
 >
 > All addresses are absolute (imagebase `0x140000000`). Subtract imagebase to get RVA.
 
@@ -24,13 +24,13 @@ Returns the player's **actor** entity. This entity may lack class 71 (positional
 
 ### GetPlayerObjectID — Positional Entity
 
-**Address:** `0x14016b400` (RVA `0x16b400`)
+**Address:** `0x14016C2D0` (RVA `0x16C2D0`)
 
 Walks `player_slot[+112]` parent chain for **class 71** (positional entity). Returns the **avatar entity** when on-foot (the first class-71 ancestor). This is the correct entity for `GetObjectPositionInSector` when the player is walking.
 
 ### GetPlayerContainerID — Container (Station/Ship)
 
-**Address:** `0x14016ae60` (RVA `0x16ae60`)
+**Address:** `0x14016BD30` (RVA `0x16BD30`)
 
 Returns the station/ship `UniverseID` the player is **inside**. Returns 0 in open space. Walks parent chain for **class 109** (container class). Works for both station and capital ship containers -- container-agnostic.
 
@@ -40,7 +40,7 @@ Returns the player's currently piloted ship ID. Returns 0 when on foot. Used to 
 
 ### GetPlayerRoom — Room Entity (Lua Only)
 
-**Lua global handler:** `sub_14024D880` (RVA `0x24D880`)
+**Lua global handler:** `sub_14024E920` (RVA `0x24E920`)
 
 Walks `player_slot[0][+112]` parent chain for **class 82** (Room). Returns room `UniverseID` or nil. This is a bare Lua global -- call as `GetPlayerRoom()`, NOT `C.GetPlayerRoom()`.
 
@@ -48,7 +48,7 @@ Found via the Lua registration table at `sub_140236710`.
 
 ### Player Slot Global
 
-**Address:** `0x143C9FA58` (+560 to slot pointer)
+**Address:** `0x143CA6D68` (+560 to slot pointer)
 
 The player slot is the root data structure for all player-related queries. Multiple player API functions read fields from this structure at various offsets.
 
@@ -62,13 +62,13 @@ Returns entity position relative to its sector origin. Internally walks `entity[
 
 ### SetObjectSectorPos — Entity Position Write
 
-**Address:** `0x14017f630` (RVA `0x17f630`)
+**Address:** `0x140180500` (RVA `0x180500`)
 
 Sets an entity's position in sector space. Walks `entity[+112]` for **class 107** (zone) to determine zone containment. Works on any class 71 entity, including NPCs spawned via `SpawnObjectAtPos2`.
 
 ### GetPositionalOffset — Room-Local Position
 
-**Address:** `0x14016BBB0` (RVA `0x16BBB0`)
+**Address:** `0x14016CA80` (RVA `0x16CA80`)
 
 With `spaceid=0`, returns position relative to the entity's direct parent (the room when on-foot). `GetPlayerID()` returns the player actor entity (class 75 = positional) which is parented to the room component when on foot. This is the correct API for room-local walking coordinates.
 
@@ -76,7 +76,7 @@ Internally calls `GetRelativeTransform` (`0x14039C3F0`, 380 callers -- core tran
 
 ### TeleportPlayerTo — Player Relocation
 
-**Address:** `0x1401c6750` (RVA `0x1c6750`)
+**Address:** `0x1401C8410` (RVA `0x1C8410`)
 
 `TeleportPlayerTo(controllableid, allowcontrolling, instant, force) -> bool`
 
@@ -88,7 +88,7 @@ Moves the player into a controllable entity (ship/station seat).
 
 ### Component Table
 
-**Global:** `qword_146C6B940` — component system root.
+**Global:** `qword_146C7A148` — component system root.
 
 Entity lookup is O(1) index-based: `component_table[entity_id]`. No hashing, no tree traversal. Reading many entity positions per frame is extremely cheap (<0.1ms for 200 entities).
 
@@ -106,11 +106,11 @@ Returns all NPCs in/on a given component. Generic -- works for capital ships as 
 
 ### GetEnvironmentObject — Current Room
 
-**Address:** `0x140ab2e10` (RVA `0xab2e10`)
+**Address:** `0x140AB4D00` (RVA `0xAB4D00`)
 
 Reads `player->data[29496]`. Returns the current room the player is standing in. Returns 0 when in cockpit or open space. Persistent cached field, updated on room change, stable between frames.
 
-**Runtime note:** Has been observed to return 0 at runtime in some contexts despite IDA analysis suggesting it should work. Use `GetPlayerRoom()` (Lua) as a more reliable alternative.
+**Runtime note:** Has been observed to return 0 at runtime in some contexts despite decompilation analysis suggesting it should work. Use `GetPlayerRoom()` (Lua) as a more reliable alternative.
 
 ---
 
@@ -133,18 +133,17 @@ Reads `player->data[29496]`. Returns the current room the player is standing in.
 
 ## 7. Function Reference
 
-| Name | Address | RVA | Purpose |
-|------|---------|-----|---------|
-| `GetPlayerObjectID` | `0x14016b400` | `0x16b400` | Class 71 positional entity for player |
-| `GetPlayerContainerID` | `0x14016ae60` | `0x16ae60` | Station/ship container (class 109) |
-| `GetPlayerRoom` (Lua handler) | `0x14024D880` | `0x24D880` | Room entity (class 82) |
-| `GetPositionalOffset` | `0x14016BBB0` | `0x16BBB0` | Room-local position with spaceid=0 |
-| `GetRelativeTransform` | `0x14039C3F0` | `0x39C3F0` | Core transform function (380 callers) |
-| `SetObjectSectorPos` | `0x14017f630` | `0x17f630` | Entity position write (class 107 zone walk) |
-| `TeleportPlayerTo` | `0x1401c6750` | `0x1c6750` | Move player into controllable |
-| `GetEnvironmentObject` | `0x140ab2e10` | `0xab2e10` | Current room (cached field path) |
-| `GetNPCs` (Lua handler) | `0x140253F00` | `0x253F00` | All NPCs in a component |
-| Player slot global | `0x143C9FA58` | — | +560 to slot pointer |
+| Name | Address | Purpose |
+|------|---------|---------|
+| `GetPlayerObjectID` | `0x14016C2D0` | Class 71 positional entity for player |
+| `GetPlayerContainerID` | `0x14016BD30` | Station/ship container (class 109) |
+| `GetPlayerRoom` (Lua handler) | `0x14024E920` | Room entity (class 82) |
+| `GetPositionalOffset` | `0x14016CA80` | Room-local position with spaceid=0 |
+| `SetObjectSectorPos` | `0x140180500` | Entity position write (class 107 zone walk) |
+| `TeleportPlayerTo` | `0x1401C8410` | Move player into controllable |
+| `GetEnvironmentObject` | `0x140AB4D00` | Current room (cached field path) |
+| Player slot global | `0x143CA6D68` | +560 to slot pointer |
+| Component table global | `0x146C7A148` | O(1) entity lookup |
 
 ---
 

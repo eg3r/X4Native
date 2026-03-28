@@ -1,6 +1,6 @@
 # X4 Threading Model — Reverse Engineering Notes
 
-> **Binary:** X4.exe v9.00 (build 900) · **Date:** 2026-03
+> **Binary:** X4.exe v9.00 · **Date:** 2026-03 
 >
 > All addresses are absolute (imagebase `0x140000000`). Subtract imagebase to get RVA.
 
@@ -142,7 +142,7 @@ These subsystems run exclusively on the main thread:
 The subsystem update function (`sub_140E999D0`) explicitly checks for main-thread context:
 
 ```c
-// Reconstructed from Hex-Rays
+// Reconstructed from decompilation
 void UpdateSubsystems() {
     if (is_main_thread()) {           // TLS + 0x788 check
         iterate_bst_directly();       // Inline BST walk, call vtable[1]

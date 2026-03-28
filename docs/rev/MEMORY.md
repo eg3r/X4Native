@@ -1,6 +1,6 @@
 # X4 Memory Subsystem — Reverse Engineering Notes
 
-> **Binary:** X4.exe v9.00 (build 600626) · **Date:** 2026-03-23
+> **Binary:** X4.exe v9.00 · **Date:** 2026-03-23
 >
 > All RVAs are relative to imagebase `0x140000000`.
 

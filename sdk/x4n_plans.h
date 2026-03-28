@@ -22,13 +22,14 @@
 
 namespace x4n { namespace plans {
 
-/// Compute FNV-1a hash of a lowercased string (engine convention).
-/// Forwarded from x4n::math:: for internal use.
+/// Compute FNV-1 hash of a lowercased string (engine convention).
+/// Note: function is named fnv1a_lower for historical reasons but computes FNV-1
+/// (multiply-then-XOR) due to C operator precedence. Output is correct.
 using math::fnv1a_lower;
 
 /// Resolve a connection name string to its ConnectionEntry pointer within a macro.
 /// macro_ptr must come from resolve_macro(). Returns nullptr if not found.
-/// Uses FNV-1a hash + binary search on the macro's sorted connection array.
+/// Uses FNV-1 hash + binary search on the macro's sorted connection array.
 /// See docs/rev/CONSTRUCTION_PLANS.md for ConnectionEntry layout.
 /// @stability HIGH — depends on MacroData offsets (X4_MACRODATA_OFFSET_CONNECTIONS_*).
 /// @verified v9.00 build 600626

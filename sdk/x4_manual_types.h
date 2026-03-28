@@ -92,7 +92,7 @@ typedef struct X4Component {
     uint8_t   _pad_6C[0x04];    // +0x6C..+0x6F: padding
     void*     parent;            // +0x70: parent X4Component* (null for galaxy root)
     uint8_t   _pad_78[0x30];    // +0x78..+0xA7: unresolved (48 bytes)
-    void*     children;          // +0xA8: bucketed child container (hash map, 32-byte buckets)
+    void*     children;          // +0xA8: child container ptr (group-indexed partition array, 32-byte buckets)
     uint8_t   _pad_B0[0x21];    // +0xB0..+0xD0: unresolved
     uint8_t   exists;            // +0xD1: existence flag (0=destroyed, nonzero=alive)
 } X4Component;
@@ -111,7 +111,7 @@ static_assert(offsetof(X4Component, exists)     == 0xD1, "X4Component::exists of
 typedef struct X4ComponentRegistry_ X4ComponentRegistry;
 
 // ---- Engine class IDs (runtime numeric IDs) ----
-// Resolved at runtime by ClassName_StringToID @ 0x1402D4130, lookup table at 0x1438D2568.
+// Resolved at runtime by ClassNameStringToID @ 0x1402D51D0 (sorted array + binary search at 0x1438D95F0).
 // Source: GetComponentClassMatrix() runtime dump + decompilation of vtable class checks.
 // Full table (119 entries) in docs/rev/COMPONENT_SYSTEM.md §7.
 // IDs 0-107 are concrete/leaf classes. IDs 108-118 are abstract hierarchy classes.
@@ -129,7 +129,7 @@ typedef struct X4ComponentRegistry_ X4ComponentRegistry;
 #define X4_CLASS_CONTROLLABLE    110   /* Abstract: entities that accept orders / can be piloted */
 #define X4_CLASS_SHIP            115   /* Abstract ship class */
 #define X4_CLASS_WALKABLE_MODULE 118   /* Abstract: station modules with walkable interiors */
-#define X4_CLASS_SENTINEL        119   /* NOT a class — BST resolver returns this when name not found */
+#define X4_CLASS_SENTINEL        119   /* NOT a class — ClassNameStringToID returns this when name not found */
 
 // ---- Global data RVA: Component registry ----
 // Add to imagebase to get absolute address. Dereference to get the actual value.
@@ -155,7 +155,7 @@ typedef struct X4ComponentRegistry_ X4ComponentRegistry;
                                                    /*          NOT a validity flag (was previously misidentified) */
 #define X4_COMPONENT_OFFSET_PARENT         0x70   /* void*  — parent X4Component* (null for galaxy root) */
                                                    /*          parent->+0x08 = parent UniverseID           */
-#define X4_COMPONENT_OFFSET_CHILDREN       0xA8   /* void*  — bucketed child container (see below) */
+#define X4_COMPONENT_OFFSET_CHILDREN       0xA8   /* void*  — child container ptr (group-indexed array, see below) */
 #define X4_COMPONENT_OFFSET_EXISTS         0xD1   /* uint8  — existence flag (0=destroyed, nonzero=alive) */
                                                    /*          confirmed by GetSectors_Lua: cmp [rax+0D1h],0 */
 #define X4_COMPONENT_OFFSET_COMBINED_SEED  0x3C0  /* int64  — raw_seed + session_seed (= MD $Station.seed) */
@@ -185,9 +185,15 @@ typedef struct X4ComponentRegistry_ X4ComponentRegistry;
 #define X4_VTABLE_GET_FACTION_ID     5600   /* slot 700: GetFactionID() -> int */
 
 // ---- Child container internal layout (at COMPONENT_OFFSET_CHILDREN) ----
-// The child container is a bucketed hash map, NOT a simple vector.
-// Each bucket is 32 bytes: {child_array_begin, child_array_end, ?, count}.
-// Children are filtered by class bitmask: 1 << *(DWORD*)(child + 0x68).
+// The child container is a GROUP-INDEXED PARTITION ARRAY (NOT a hash map).
+// component+0xA8 is a POINTER to a container object:
+//   container+0x08: bucket_array_begin  (pointer to 32-byte bucket array)
+//   container+0x10: bucket_array_end
+//   container+0x20: total_child_count   (DWORD)
+// Each bucket (32 bytes): {child_ptr_begin, child_ptr_end, capacity_end, count}.
+// Buckets are indexed by GROUP INDEX (not class ID). Multiple class IDs share
+// the same group (e.g., clusters and sectors both use group 2).
+// Callers apply vtable-based IsClassID post-filters for exact class matching.
 // Use ChildComponent_Enumerate (0x1402F9B80) to iterate; do not walk manually.
 // Key internal addresses (for reference, not for direct use):
 //   ChildComponent_Enumerate:       0x1402F9B80 (61 callers)
@@ -275,7 +281,7 @@ typedef enum X4RoomType {
 
 // ---- Global data RVAs: Plan and macro registries ----
 // WARNING: data addresses change between builds. Re-verify on game updates.
-// Verified: v9.00 build 602526 (confirmed via caller trace + 0x6418 shift)
+// Verified: v9.00 build 900 (deep-verified 2026-03-28 via full decompilation)
 #define X4_RVA_CONSTRUCTION_PLAN_DB     0x06C7A3B8  /* void** — g_ConstructionPlanRegistry (RB-tree at +16) */
 #define X4_RVA_MACRO_REGISTRY           0x06C7A248  /* void*  — g_MacroRegistry (BST at +64) */
 
@@ -345,7 +351,8 @@ typedef enum X4RoomType {
 //
 // See docs/rev/CONSTRUCTION_PLANS.md for full documentation.
 // NOTE: struct layout — update when game build changes.
-// Verified: v9.00 build 602526 (R-Station4 + plan_entry_struct_analysis)
+// Verified: v9.00 build 900 (deep-verified 2026-03-28: PlanEntry_Construct @ 0x140D0C6B0 decompiled,
+//   528-byte allocation confirmed at 3 call sites, all field offsets matched)
 typedef struct alignas(16) X4PlanEntry {
     int64_t   id;                   // +0:   unique ID (auto-assigned from atomic counter if 0)
     void*     macro_ptr;            // +8:   MacroData* (from MacroRegistry_Lookup)

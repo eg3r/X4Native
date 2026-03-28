@@ -1,10 +1,9 @@
 # X4 Component System — Entity Base Layout, Registry, Class Hierarchy
 
-> **Binary:** X4.exe v9.00 (build 602526) | **Date:** 2026-03-27
+> **Binary:** X4.exe v9.00 | **Date:** 2026-03-27
 >
 > All addresses are absolute (imagebase `0x140000000`).
 >
-> Reverse-engineered from 15+ decompiled functions. See methodology in each section.
 > SDK types: `x4_manual_types.h` (`X4Component`), `x4n_entity.h`, `x4n_galaxy.h`.
 
 ---
@@ -95,31 +94,83 @@ Standard MSVC `shared_ptr` control block:
 
 ## 3. Child Container (+0xA8)
 
-The child container is a **bucketed hash map**, NOT a simple vector or linked list.
+> **Corrected 2026-03-28.** Previously described as "bucketed hash map" — this was **wrong**. No hash function exists. The structure is a group-indexed partition array with direct arithmetic indexing.
+
+The field at `component+0xA8` is a **pointer** to a child container object. The container is a **group-indexed partition array** — a fixed-size array of vectors (buckets), one per entity group. Children belonging to similar entity types share the same group bucket. Lookup is O(1) direct array indexing, not hashing.
+
+### 3.1 Container Object Layout
+
+`component+0xA8` stores a pointer. The pointed-to object:
 
 ```
-container + 0x00: bucket_array_begin  (pointer to array of 32-byte buckets)
-container + 0x08: bucket_array_end
-container + 0x10: ?
-container + 0x18: count
-
-Each bucket (32 bytes):
-  +0x00: child_ptr_begin  (pointer to array of X4Component*)
-  +0x08: child_ptr_end
-  +0x10: ?
-  +0x18: count
+container + 0x00: ???                  (8 bytes — not accessed by enumerator)
+container + 0x08: bucket_array_begin   (pointer to array of 32-byte buckets)
+container + 0x10: bucket_array_end     (pointer past last bucket)
+container + 0x18: ???                  (not accessed)
+container + 0x20: total_child_count    (DWORD — sum across all buckets)
 ```
 
-Children are filtered by class bitmask: `1 << *(DWORD*)(child + 0x68)`. The enumerator checks each bucket's children against the bitmask.
+### 3.2 Bucket Layout (32 bytes each)
 
-**Do NOT walk manually.** Use `ChildComponent_Enumerate` or the safe FFI approach.
+```
+bucket + 0x00: child_ptr_begin   (pointer to X4Component*[])
+bucket + 0x08: child_ptr_end     (pointer past last child)
+bucket + 0x10: capacity_end      (pointer — std::vector-style capacity)
+bucket + 0x18: count             (DWORD — cached child count)
+bucket + 0x1C: padding           (4 bytes)
+```
+
+### 3.3 Group Index (NOT class ID)
+
+`ChildComponent_Enumerate`'s 3rd parameter is a **group index**, NOT a class ID:
+
+```asm
+; At 0x1402F9C21 — direct array indexing, no hash:
+lea     ecx, [rsi-1]        ; group_index - 1
+shl     rcx, 5              ; * 32 bytes per bucket
+add     rdi, rcx            ; bucket_ptr = base + (group_index - 1) * 32
+```
+
+- `group_index = 0` → scan ALL buckets (no single-bucket optimization)
+- `group_index = N` → jump directly to `bucket[N-1]`
+
+**Multiple class IDs share the same group.** Evidence: both `GetClusters_Lua` (filters for class 15) and `GetSectors_Lua` (filters for class 86) pass `group_index = 2`. The group is a coarse partition; callers apply vtable-based post-filters (`IsClassID`) to select the exact class.
+
+Observed group indices across 61 callers: 0 (all), 2 (spatial), 3, 5, 6 (ships/docked), 7-16. At least 16 groups exist.
+
+### 3.4 Secondary Bitmask Filter
+
+A byte-wide bitmask at `byte_146C7D590` provides an 8-bit class filter **within** each bucket:
+
+```asm
+mov     ecx, [rdx+68h]    ; child.class_id
+shl     al, cl             ; 1 << (class_id % 8) — wraps at 8 bits
+test    bl, al             ; test against bitmask
+```
+
+This is a secondary optimization, NOT the primary indexing. Since it operates on a single byte (`al`), class IDs >= 8 alias (e.g., class 8 produces the same bit as class 0). In practice, the global appears to be `0xFF` (all-pass), meaning the real filtering is done by callback filter objects (4th parameter) and post-iteration vtable checks.
+
+### 3.5 Iterator State Structure
+
+```
+ChildIteratorState (40 bytes):
+  +0x00: current_bucket_ptr    (QWORD)
+  +0x08: last_bucket_ptr       (QWORD — end of scan range)
+  +0x10: child_index            (DWORD — index within current bucket)
+  +0x14: single_bucket_flag     (BYTE  — don't advance to next bucket)
+  +0x15: class_bitmask          (BYTE  — 1 << class_id filter)
+  +0x18: filter_callback_1      (QWORD — filter object pointer)
+  +0x20: filter_callback_2      (QWORD — filter object pointer)
+```
+
+**Do NOT walk manually.** Group assignment is opaque (determined at child insertion time). Use `ChildComponent_Enumerate` or the safe FFI approach.
 
 | Function | Address | Purpose |
 |----------|---------|---------|
-| `ChildComponent_Enumerate` | `0x1402F9B80` | Iterate children with class bitmask filter (61 callers) |
-| `ChildComponent_Iterator_Init` | `0x1402FF740` | Initialize bucket iterator |
+| `ChildComponent_Enumerate` | `0x1402F9B80` | Iterate children by group index with optional filters (61 callers) |
+| `ChildComponent_Iterator_Init` | `0x1402FF740` | Initialize bucket iterator from container+8 |
 | `ChildComponent_Iterator_Next` | `0x1402F9AA0` | Advance to next matching child |
-| `ChildComponent_GetBucketCount` | `0x1402E5120` | Read bucket count from container |
+| `ChildComponent_GetBucketCount` | `0x1402E5120` | Read child count (total or per-bucket) |
 
 ---
 

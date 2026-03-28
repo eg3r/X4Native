@@ -1,6 +1,6 @@
 # X4 Walkable Interior System — Reverse Engineering Notes
 
-> **Binary:** X4.exe v9.00 (build 600626) · **Date:** 2026-21
+> **Binary:** X4.exe v9.00 · **Date:** 2026-03
 >
 > All addresses are absolute (imagebase `0x140000000`). Subtract imagebase to get RVA.
 
@@ -39,7 +39,7 @@ Container (station or capital ship)
 
 ## 3. Capital Ship Interiors
 
-Capital ships (L-class and XL-class: `ShipLarge`, `ShipExtraLarge`) have walkable interiors. Confirmed by multiple IDA findings:
+Capital ships (L-class and XL-class: `ShipLarge`, `ShipExtraLarge`) have walkable interiors. Confirmed by multiple binary analysis findings:
 
 ### Evidence
 

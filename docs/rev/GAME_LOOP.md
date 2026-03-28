@@ -1,6 +1,6 @@
 # X4 Game Loop — Reverse Engineering Notes
 
-> **Binary:** X4.exe v9.00 (build 900) · **Date:** 2026-03
+> **Binary:** X4.exe v9.00 · **Date:** 2026-03
 >
 > All addresses are absolute (imagebase `0x140000000`). Subtract imagebase to get RVA.
 
@@ -10,14 +10,14 @@
 
 ```mermaid
 graph TD
-    WM["<b>WinMain</b><br/>0x14124EC80"]
-    MP["<b>Message Pump</b><br/>sub_14124FC80"]
-    FT["<b>Frame Tick</b><br/>sub_140F4A2A0<br/><i>RVA 0xF4A2A0</i>"]
-    SU["<b>Subsystem Tree Update</b><br/>sub_140E999D0<br/><i>RVA 0xE999D0</i>"]
-    VR["<b>Vulkan Render Prep</b><br/>sub_140F498D0<br/><i>vkUpdateDescriptorSets</i>"]
-    RF["<b>Render Frame</b><br/>sub_140F475F0<br/><i>vkCmdEndRenderPass</i>"]
-    FL["<b>Frame Limiter</b><br/>sub_140F4A0D0<br/><i>QPC + Sleep FPS cap</i>"]
-    RS["<b>Render State Machine</b><br/>sub_140F4ABC0<br/><i>Vulkan device recovery,<br/>resolution changes, etc.</i>"]
+    WM["<b>WinMain</b><br/>0x141257320"]
+    MP["<b>Message Pump</b><br/>0x141258320<br/><i>PeekMessageW + input</i>"]
+    FT["<b>Frame Tick</b><br/>0x140F50C70"]
+    SU["<b>Subsystem RB Tree Walk</b><br/>0x140EA06E0"]
+    VR["<b>Vulkan Render Prep</b><br/>0x140F502A0<br/><i>vkUpdateDescriptorSets</i>"]
+    RF["<b>Render Frame</b><br/>0x140F4DDC0<br/><i>vkCmdEndRenderPass</i>"]
+    FL["<b>Frame Limiter</b><br/>0x140F50AA0<br/><i>QPC + Sleep (DLSS-aware)</i>"]
+    RS["<b>Render State Machine</b><br/>0x140F51590<br/><i>Vulkan device recovery,<br/>resolution changes, etc.</i>"]
 
     WM --> MP
     MP -->|"no pending messages"| FT
@@ -45,7 +45,7 @@ graph TD
 Standard Win32 message loop with game-specific additions:
 
 ```c
-// Pseudocode — reconstructed from Hex-Rays
+// Pseudocode — reconstructed from decompilation
 while (Msg.message != WM_QUIT) {
     if (PeekMessageW(&Msg, NULL, 0, 0, PM_REMOVE)) {
         // Handle power notifications, hotkeys
@@ -399,35 +399,32 @@ classDiagram
 
 Quick reference for all identified functions.
 
-| Name (proposed) | Address | RVA | Size | Purpose |
-|-----------------|---------|-----|------|---------|
-| `WinMain` | `0x14124EC80` | `0x124EC80` | ~0x6AA | Entry point |
-| `X4_MessagePump` | `0x14124FC80` | `0x124FC80` | — | Win32 message loop |
-| `X4_FrameTick` | `0x140F4A2A0` | `0xF4A2A0` | — | Core per-frame function |
-| `X4_UpdateSubsystems` | `0x140E999D0` | `0xE999D0` | — | BST iteration, calls vtable+8 |
-| `X4_VulkanRenderPrep` | `0x140F498D0` | `0xF498D0` | — | vkUpdateDescriptorSets |
-| `X4_RenderFrame` | `0x140F475F0` | `0xF475F0` | — | vkCmdEndRenderPass, descriptors |
-| `X4_FrameLimiter` | `0x140F4A0D0` | `0xF4A0D0` | — | QPC EMA + Sleep FPS cap |
-| `X4_RenderStateMachine` | `0x140F4ABC0` | `0xF4ABC0` | — | Flag-driven render reconfiguration |
-| `Anark_DispatchEvents` | `0x140AAC430` | `0xAAC430` | — | AnarkLuaEngine vtable[5] |
-| `Anark_UIEventDispatcher` | `0x141342720` | `0x1342720` | — | Fires onUpdate etc. to Lua |
-| `Anark_FireLuaCallback` | `0x141344A70` | `0x1344A70` | — | lua_getfield + lua_pcall |
-| `Anark_RegisterForEvent` | `0x141354440` | `0x1354440` | — | Event registration (blocks auto-events) |
-| `IsGamePaused_0` | `0x14145A020` | `0x145A020` | — | Returns pause state |
-| `HashInit_onInitialize` | `0x140091C10` | `0x91C10` | — | Computes and stores hash |
-| `HashInit_onActivate` | `0x140091C50` | `0x91C50` | — | Computes and stores hash |
-| `HashInit_onDeactivate` | `0x140091C90` | `0x91C90` | — | Computes and stores hash |
-| `HashInit_onUpdate` | `0x140091CD0` | `0x91CD0` | — | Computes and stores hash |
-| `GameStartOrLoad` | `0x140A68C80` | `0xA68C80` | — | Master new game / save load entry point |
-| `PostLoadProcessing` | `0x1409A4840` | `0x9A4840` | 0x151 | GodEngine + event flush + JobEngine init |
-| `NotifyUniverseGenerated` | `0x1409A49A0` | `0x9A49A0` | 0x74D | Sets universe_generated_flag, dispatches UniverseGeneratedEvent |
-| `GodEngine_Init` | `0x14059A200` | `0x59A200` | 0x1925 | Populates universe (NPCs, ships, stations) |
-| `JobEngine_Init` | `0x140EB3800` | `0xEB3800` | 0x34F | Initializes job spawning system |
-| `SignalMDEvent` | `0x140954970` | `0x954970` | ~0x80 | Signals MD cue system with event ID |
-| `FinalPlayerSetup` | `0x1406CBB10` | `0x6CBB10` | ~0x2B0 | Sets up player zone/sector context |
-| `SetUIMode` | `0x140AEE0B0` | `0xAEE0B0` | 0x111 | Transitions UI mode (loading/game/startmenu) |
-| `CUIController_Init` | `0x140AEC7D0` | `0xAEC7D0` | ~0x330 | Full UI controller initialization |
-| `HelperModule_InitializeUI` | `0x140A69B10` | `0xA69B10` | 0x5C9 | Initializes Lua UI system |
+> Addresses re-verified 2026-03-28. Core loop functions confirmed via decompilation.
+
+| Name | Address | Purpose | Verification |
+|------|---------|---------|--------------|
+| **Core Loop (verified 2026-03-28)** | | | |
+| `WinMain` | `0x141257320` | Entry point — creates mutex `"EGOSOFT_X4_INSTANCE"` | Named symbol |
+| `X4_MessagePump` | `0x141258320` | Win32 message loop (`PeekMessageW`) + input processing | Sole `PeekMessageW` caller |
+| `WndProc` | `0x141258580` | Window procedure (set as `lpfnWndProc`) | Traced from `RegisterClassExW` |
+| `X4_FrameTick` | `0x140F50C70` | Core per-frame function — calls UpdateSubsystems | Called from message pump |
+| `UpdateSubsystems_RBTreeWalk` | `0x140EA06E0` | RB tree in-order walk, calls vtable+8 | See SUBSYSTEMS.md §3 |
+| `X4_VulkanRenderPrep` | `0x140F502A0` | vkUpdateDescriptorSets | Callee of FrameTick |
+| `X4_RenderFrame` | `0x140F4DDC0` | vkCmdEndRenderPass, descriptors — `"debug_gamma"` string | String reference |
+| `X4_FrameLimiter` | `0x140F50AA0` | QPC EMA + Sleep FPS cap (DLSS/FFX-aware) | Sleep + QPC pattern |
+| `X4_RenderStateMachine` | `0x140F51590` | Flag-driven render reconfiguration — `"Failed to recover after Lost-Device"` | String reference |
+| `Anark_DispatchEvents` | `0x140AB0100` | AnarkLuaEngine vtable[5] | See SUBSYSTEMS.md §5 |
+| **Engine Lifecycle (verified 2026-03-28)** | | | |
+| `PE_Entry` | `0x1416F9DA4` | PE entry point (`start` symbol) | RE database symbol |
+| `EngineInit` | `0x1411CB620` | QPF setup, crash reports, Vulkan init — `"Main()"` string | String reference |
+| `WindowInit` | `0x140F4C1E0` | `RegisterClassExW("X4")`, `CreateWindowExW`, `vkCreateWin32SurfaceKHR` | API call trace |
+| `EngineShutdown` | `0x1411CE2C0` | Thread join, cleanup | Called from WinMain |
+| **Game Init (addresses from earlier build — may be shifted)** | | | |
+| `GameStartOrLoad` | `0x140A68C80` | Master new game / save load entry point | |
+| `PostLoadProcessing` | `0x1409A4840` | GodEngine + event flush + JobEngine init | |
+| `NotifyUniverseGenerated` | `0x1409A49A0` | Sets universe_generated_flag, dispatches UniverseGeneratedEvent | |
+| `GodEngine_Init` | `0x14059A200` | Populates universe (NPCs, ships, stations) | |
+| `JobEngine_Init` | `0x140EB3800` | Initializes job spawning system | |
 
 ---
 
@@ -435,14 +432,21 @@ Quick reference for all identified functions.
 
 For x4native's internal function hooking system (MinHook on non-exported functions resolved by RVA):
 
-| Candidate | RVA | Why Hook It | Risk |
-|-----------|-----|-------------|------|
-| **X4_FrameTick** | `0xF4A2A0` | Pre/post frame callbacks with engine context. Most general-purpose hook point. | Low — simple signature, called from one site |
-| **X4_UpdateSubsystems** | `0xE999D0` | Sim-only updates (skipped when suspended). Good for game logic. | Medium — BST iteration, threading concerns |
-| **X4_FrameLimiter** | `0xF4A0D0` | Post-render timing data. Useful for frame time monitoring. | Low — leaf function |
-| **IsGamePaused_0** | `0x145A020` | Intercept/override pause state. | Low — simple boolean return |
+| Candidate | Address | Why Hook It | Risk |
+|-----------|---------|-------------|------|
+| **X4_FrameTick** | `0x140F50C70` | Pre/post frame callbacks with engine context. Most general-purpose hook point. | Low — simple signature, called from one site |
+| **UpdateSubsystems_RBTreeWalk** | `0x140EA06E0` | Sim-only updates (skipped when suspended). Good for game logic. | Medium — RB tree iteration, threading concerns |
+| **X4_FrameLimiter** | `0x140F50AA0` | Post-render timing data. Useful for frame time monitoring. | Low — leaf function |
 
-> **Note:** RVAs are version-specific (v9.00 build 900). A future version database will track RVA changes across game patches.
+> **Note:** Addresses verified for v9.00 build 900 (2026-03-28). Will shift between game patches.
+
+### Non-Obvious Findings (from 2026-03-28 research)
+
+- **NVIDIA Streamline** (Reflex + DLSS-G frame generation) integrated at frame tick start
+- **Input processing** (239-element gamepad bitmask) happens in the message pump, NOT in the frame tick
+- **Frame limiter is DLSS/FFX-aware** — divides target FPS by frame generation multiplier
+- **First frame after suspend** uses fixed 33ms delta to prevent time jumps
+- **Power-saving mode:** `Sleep(75ms)` when minimized/inactive
 
 ---
 
@@ -536,7 +540,7 @@ Note: For saved games, `FireGameStartedEvent` is NOT called. `GameLoadedEvent` i
 - `on_game_started` -- fires on `event_game_started`. Gamestart MD cues complete. **New game only** -- does NOT fire for save loads.
 - `on_universe_ready` -- fires on `event_universe_generated`. Universe fully generated, all stations built, player entity valid. Fires for **both** new game and save load. This is the definitive "world ready" signal.
 
-> **Updated:** 2026-03-25 via IDA decompilation of `GameStartOrLoad` (`0x140A68C80`), `PostLoadProcessing` (`0x1409A4840`), and `NotifyUniverseGenerated` (`0x1409A49A0`). Added `on_universe_ready` event backed by `event_universe_generated`. See `.claude/reports/save_load_completion_research.md` for full analysis.
+> **Updated:** 2026-03-25 via decompilation of `GameStartOrLoad` (`0x140A68C80`), `PostLoadProcessing` (`0x1409A4840`), and `NotifyUniverseGenerated` (`0x1409A49A0`). Added `on_universe_ready` event backed by `event_universe_generated`.
 >
 > **Previously confirmed:** 2026-03-24 via topology discovery bug. Client `TopologyManager` started on `on_game_loaded` but depended on `X4Online_ClientGamestartSetup` MD cue having already marked sectors as "known."
 

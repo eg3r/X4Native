@@ -1,7 +1,7 @@
 # Faction Relation System -- Binary Internals
 
 > Deep reverse engineering of X4.exe v9.00 faction relation read/write paths.
-> All addresses relative to imagebase `0x140000000`.
+> All addresses relative to imagebase `0x140000000`. 
 > NOTE: All code below is pseudocode
 
 ---
@@ -15,7 +15,7 @@ The faction relation system stores floating-point values in `[-1.0, +1.0]` betwe
 ```mermaid
 flowchart TD
     subgraph "Read Path"
-        A[GetFactionRelationStatus2] --> B[FactionRegistry Lookup<br/>FNV-1a hash]
+        A[GetFactionRelationStatus2] --> B[FactionRegistry Lookup<br/>FNV-1 hash]
         B --> C[FactionRelation_ComputeUIValue]
         B --> D[FactionRelation_ComputeLEDValue]
         C --> E[FactionRelation_ReadRawFloat]
@@ -81,7 +81,7 @@ RelationDetails GetFactionRelationStatus2(const char* factionid) {
         return result;
     }
 
-    // FNV-1a hash of faction string
+    // FNV-1 hash of faction string
     uint64_t hash = fnv1a(factionid);
 
     // Binary tree lookup in g_FactionRegistry
@@ -94,22 +94,23 @@ RelationDetails GetFactionRelationStatus2(const char* factionid) {
     // Determine player faction context
     FactionClass* player_faction = GetPlayerFaction();
 
-    // Determine relation status enum
-    int status = 6;  // default: friend
+    // Determine relation status enum.
+    // UI names confirmed from monitors.lua:3529-3541 (game v9.00).
+    int status = 6;  // default: unknown (no range matched)
     if (faction == g_PlayerFactionContext) {
-        status = 5;  // member (same faction)
+        status = 5;  // Owned (player's own faction)
     } else if (IsSameAlliance(faction, player_faction)) {
-        status = 0;  // ally
+        status = 4;  // Allied
     } else if (CheckInRange(faction, player_faction, RANGE_DOCK /*7*/)) {
-        status = 4;  // neutral/dock
+        status = 3;  // Friendly (dock-friendly range)
     } else if (CheckInRange(faction, player_faction, RANGE_ENEMY /*4*/)) {
-        status = 3;  // attack
+        status = 2;  // Neutral (above enemy threshold)
     } else if (CheckInRange(faction, player_faction, RANGE_NEMESIS /*9*/)) {
-        status = 2;  // kill
+        status = 1;  // Enemy (above nemesis, below enemy)
     } else {
         if (CheckInRange(faction, player_faction, RANGE_FRIEND /*3*/))
-            status = 1;  // hostile (below friend but above kill)
-        // else status = 6 (friend)
+            status = 0;  // Hostile (below friend threshold)
+        // else status = 6 (unknown)
     }
 
     result.relationStatus  = status;
@@ -119,17 +120,17 @@ RelationDetails GetFactionRelationStatus2(const char* factionid) {
 }
 ```
 
-**Relation Status Enum:**
+**Relation Status Enum** (confirmed from game UI `monitors.lua:3529-3541`):
 
-| Value | Name | Meaning | Range Check |
-|-------|------|---------|-------------|
-| 0 | ally | Same alliance | `IsSameAlliance()` |
-| 1 | hostile | Hostile (below friend threshold) | `!CheckInRange(friend)` fallback |
-| 2 | kill | Kill-on-sight | `CheckInRange(nemesis, 9)` |
-| 3 | attack | Attackable | `CheckInRange(enemy, 4)` |
-| 4 | neutral | Neutral/dock-friendly | `CheckInRange(dock, 7)` |
-| 5 | member | Same faction as player | `faction == g_PlayerFactionContext` |
-| 6 | friend | Friendly (default) | Default when none match |
+| Value | UI Name | Meaning | Range Check |
+|-------|---------|---------|-------------|
+| 0 | Hostile | Below friend threshold (worst) | `CheckInRange(friend)` fallback |
+| 1 | Enemy | Above nemesis, below enemy range | `CheckInRange(nemesis, 9)` |
+| 2 | Neutral | Above enemy threshold | `CheckInRange(enemy, 4)` |
+| 3 | Friendly | Dock-friendly range | `CheckInRange(dock, 7)` |
+| 4 | Allied | Same alliance | `IsSameAlliance()` |
+| 5 | Owned | Player's own faction | `faction == g_PlayerFactionContext` |
+| 6 | Unknown | No range matched (default) | Default fallback |
 
 ### 2.2 FactionRelation_GetFloat
 
@@ -190,15 +191,16 @@ float FactionRelation_ReadRawFloat(RelationDataBase* base, FactionClass* target)
 
 ### 2.4 FactionRelation_FloatToUIInt
 
-**Address:** `0x14099C780`
-**Signature:** `int FactionRelation_FloatToUIInt(FactionRegistry* reg, int unused)`
+**Address:** `0x14099E540`
+**Signature:** `int FactionRelation_FloatToUIInt(FactionManager* mgr, int unused)`
 
-Converts the most recently read raw float to a UI integer in `[-30, +30]`. Uses a threshold tree stored in the `FactionRegistry` to define mapping breakpoints.
+Converts the most recently read raw float (carried in `xmm1`) to a UI integer in `[-30, +30]`. Walks a BST of threshold nodes (at `mgr+0x60`) to find the bracketing pair, then dispatches to one of three piecewise interpolation branches:
 
-The conversion uses:
-- **Logarithmic interpolation** for values where `|f| >= threshold` (approximately 0.0032)
-- **Linear interpolation** for values near zero (`|f| < threshold`)
-- **Epsilon rounding:** `+/- 0.00001` added before truncation to handle floating-point precision
+- **Positive log** (both thresholds > 0): `LogInterpolate` @ `0x141487290`, adds `+1e-5` before `cvttss2si`
+- **Negative log** (both thresholds < 0): negates values, calls `LogInterpolate`, subtracts `1e-5` before `cvttss2si`
+- **Zero-crossing linear** (lower <= 0, upper >= 0): `LinearInterpolate` @ `0x1414871C0` with epsilon `1e-4`, bare `cvttss2si`
+
+See Section 4.1 for the exact formulas and threshold table.
 
 ### 2.5 FactionRelation_ComputeUIValue
 
@@ -249,15 +251,15 @@ Maps UI integer to LED color index:
 
 | UI Value Range | LED Value | Color Meaning |
 |----------------|-----------|---------------|
-| <= -30 | -4 | Deep hostility |
-| -29 to -20 | -3 | Strong enemy |
+| <= -30 | -4 | Hostile (deep) |
+| -29 to -20 | -3 | Hostile |
 | -19 to -10 | -2 | Enemy |
-| -9 to -1 | -1 | Unfriendly |
+| -9 to -1 | -1 | Enemy (slight) |
 | 0 | 0 | Neutral |
-| 1 to 9 | 1 | Friendly |
-| 10 to 19 | 2 | Good friend |
-| 20 to 29 | 3 | Strong ally |
-| >= 30 | 4 | Deep alliance |
+| 1 to 9 | 1 | Neutral (positive) |
+| 10 to 19 | 2 | Friendly |
+| 20 to 29 | 3 | Allied |
+| >= 30 | 4 | Allied (deep) |
 
 ---
 
@@ -279,7 +281,7 @@ void SetFactionRelationToPlayerFaction(
 ) {
     if (!factionid) { LogError("...nullptr"); return; }
 
-    // FNV-1a lookup in FactionRegistry
+    // FNV-1 lookup in FactionRegistry
     FactionClass* faction = FactionRegistry_Find(g_FactionRegistry, fnv1a(factionid));
     if (!faction) { LogError("...not found '%s'", factionid); return; }
 
@@ -409,13 +411,160 @@ Creates a `RelationBoostSource<FactionClass*, FactionClass*, float>` object (40 
 
 Always calls `FactionRelation_RemoveBoost` first to clear any existing boost for the same target.
 
-### 3.5 Other Write Entry Points
+### 3.5 FactionRelation_SetForEntity
 
-| Function | Address | Description |
-|----------|---------|-------------|
-| `FactionRelation_SetForEntity` | `0x1409943B0` | Wrapper: reads float then calls `ApplyMutation(bidirectional=1)` |
-| `MD_FactionRelationAction_Execute` | `0x140B92BF0` | MD script action handler for `set_faction_relation` / `add_faction_relation` |
-| `FactionRelation_ApplyAndNotify` | `0x140993DC0` | Fires `RelationChangedEvent` + `RelationRangeChangedEvent` for player faction only |
+**Address (build 900-602526):** `0x140996170` (RVA `0x00996170`)
+**Size:** `0x83` bytes
+**Signature:** `void FactionRelation_SetForEntity(FactionClass* from, FactionClass* to, float delta /*xmm2*/, int reason_id /*r9d*/)`
+
+This is the function that MD's `set_faction_relation` calls. Despite the name "set", it is **additive**: it reads the current relation float, adds the incoming delta, and passes the sum as the new absolute boost to `ApplyMutation`.
+
+```c
+void FactionRelation_SetForEntity(
+    FactionClass* from,   // rcx
+    FactionClass* to,     // rdx
+    float delta,          // xmm2: additive delta
+    int reason_id         // r9d
+) {
+    if (!to) return;
+    if (to == from) return;
+
+    // Read current relation float (from -> to)
+    float current = FactionRelation_ReadRawFloat(*(from + 640) + 16, to);
+
+    // New boost = current + delta
+    float new_boost = current + delta;
+
+    // Apply as absolute boost, bidirectional
+    FactionRelation_ApplyMutation(from, to, new_boost /*xmm2*/, reason_id /*r9d*/, 1 /*stack*/);
+}
+```
+
+**Key insight:** The `xmm2` parameter here is a **delta** that gets added to the current float. The result becomes the absolute boost value in `ApplyMutation`. This differs from `ApplyMutation` which takes an **absolute** boost target.
+
+### 3.6 MD_FactionRelationAction_Execute
+
+**Address (build 900-602526):** `0x140B94C40` (RVA `0x00B94C40`)
+**Size:** `0x1BA` bytes
+
+The MD action handler dispatches two different MD commands based on the action type ID at `action+8`:
+
+| Action ID | Hex | MD Command | Target Function |
+|-----------|-----|------------|-----------------|
+| 1652 | 0x674 | `set_faction_relation` | `FactionRelation_SetForEntity` (additive) |
+| 2192 | 0x890 | `add_faction_relation` | `FactionRelation_ApplyMutation` (absolute boost) |
+
+```c
+void MD_FactionRelationAction_Execute(MDAction* action, void* a2, void* a3) {
+    FactionClass* faction_a = ResolveEntityParam(action + 40, a3);  // 'faction' attr
+    FactionClass* faction_b = ResolveEntityParam(action + 56, a3);  // 'otherfaction' attr
+    if (!faction_a || !faction_b) return;
+
+    float value = EvalExpression(action + 72, a3);  // 'value' attr -> xmm6
+    int reason_id = ResolveReasonParam(action + 88, a3); // 'reason' attr -> int
+
+    int action_type = *(int*)(action + 8);
+
+    if (action_type == 0x674) {
+        // set_faction_relation: additive via SetForEntity
+        FactionRelation_SetForEntity(faction_a, faction_b, value /*xmm2*/, reason_id /*r9d*/);
+    } else if (action_type == 0x890) {
+        // add_faction_relation: absolute boost via ApplyMutation
+        FactionRelation_ApplyMutation(faction_a, faction_b, value /*xmm2*/, reason_id /*r9d*/, 1 /*bidirectional*/);
+    }
+}
+```
+
+**Important semantic difference:**
+- `set_faction_relation value="X"` passes `X` to `SetForEntity`, which computes `current + X` as the new absolute boost. So `value` is a delta.
+- `add_faction_relation value="X"` passes `X` directly to `ApplyMutation` as the absolute new boost target (clamped to [-1.0, 1.0]).
+
+Both support NPC-to-NPC factions (not player-only). The only player-specific function is the exported `SetFactionRelationToPlayerFaction`.
+
+### 3.7 FactionRelation_ApplyAndNotify
+
+**Address (build 900-602526):** `0x140995B80` (RVA `0x00995B80`)
+**Size:** `0x31E` bytes
+**Signature:** `void FactionRelation_ApplyAndNotify(FactionClass* from, FactionClass* to, float old_value /*xmm2*/, float new_value /*xmm3*/, int reason_id /*stack*/)`
+
+Fires `RelationChangedEvent` and `RelationRangeChangedEvent` specifically for the **player faction** context. Only fires if `to == g_PlayerFaction`.
+
+### 3.8 Other Write Path Functions (Updated Addresses)
+
+| Function | Address (build 900-602526) | RVA | Size |
+|----------|---------------------------|-----|------|
+| `FactionRelation_InsertBoost` | `0x140A098C0` | `0x00A098C0` | `0xB5` |
+| `FactionRelation_RemoveBoost` | `0x140428670` | `0x00428670` | - |
+| `FactionRelation_CheckRangeChanged` | `0x14099DF20` | `0x0099DF20` | - |
+| `FactionRelation_LookupReasonID` | `0x1402CBF00` | `0x002CBF00` | `0x160` |
+
+---
+
+## 5. Faction Registry Lookup (String to FactionClass*)
+
+### 5.1 Pattern
+
+All exported functions that accept a `const char* factionid` use the same inline pattern to resolve it to a `FactionClass*`:
+
+1. **FNV-1 hash** the string (NOT FNV-1a -- XOR-before-multiply):
+   ```c
+   uint64_t hash = 2166136261ULL; // 0x811C9DC5
+   for (size_t i = 0; i < len; i++)
+       hash = (hash * 16777619ULL) ^ (uint64_t)(uint8_t)factionid[i]; // FNV-1: multiply then XOR
+   ```
+   Note: Despite code comments in the existing doc saying FNV-1a, the disassembly at `0x14017F87A` shows `v11 = v13 ^ (16777619 * v11)` which is multiply-first (FNV-1), not XOR-first (FNV-1a).
+
+2. **BST lookup** in `g_FactionManager`:
+   ```c
+   // g_FactionManager is at global 0x146C7A398 (RVA 0x06C7A398)
+   void* sentinel = g_FactionManager + 16;
+   void* node = *(void**)(g_FactionManager + 24);  // root
+   void* result = sentinel;
+   while (node) {
+       if (*(uint64_t*)(node + 32) < hash)   // key at node+32
+           node = *(void**)(node + 16);        // right child
+       else {
+           result = node;
+           node = *(void**)(node + 8);          // left child
+       }
+   }
+   if (result == sentinel || hash < *(uint64_t*)(result + 32))
+       return NULL; // not found
+   return (FactionClass*)(result + 48);  // FactionClass* at node+48
+   ```
+
+3. **g_PlayerFaction** is a direct global at `0x14387E708` (RVA `0x0387E708`) — holds the player's FactionClass* directly.
+
+### 5.2 Global Addresses
+
+| Global | Address (build 900-602526) | RVA | Type |
+|--------|---------------------------|-----|------|
+| `g_FactionManager` | `0x146C7A398` | `0x06C7A398` | `void*` (FactionManager singleton) |
+| `g_PlayerFaction` | `0x14387E708` | `0x0387E708` | `FactionClass*` |
+
+### 5.3 Calling NPC-NPC Relations from Native Code
+
+To set relations between two NPC factions from native C++ code:
+
+```c
+// Step 1: Resolve faction strings to FactionClass pointers
+// (inline the FNV-1 + BST pattern from Section 5.1, or call
+//  a helper that wraps it)
+FactionClass* faction_a = FactionRegistry_Find("faction_argon");
+FactionClass* faction_b = FactionRegistry_Find("faction_paranid");
+
+// Step 2: Look up reason ID
+int reason_id = FactionRelation_LookupReasonID(faction_node_ptr, &reason_sv);
+// Or use a known reason_id constant (e.g., 5 is commonly used)
+
+// Step 3: Call ApplyMutation directly for absolute boost
+// rcx = from, rdx = to, xmm2 = boost float, r9d = reason_id, [rsp+20h] = bidirectional
+FactionRelation_ApplyMutation(faction_a, faction_b, 0.5f, reason_id, 1);
+```
+
+**Recommended approach for X4Strategos**: Call `FactionRelation_ApplyMutation` directly rather than `SetForEntity`. ApplyMutation takes an **absolute** boost value (clamped to [-1.0, 1.0]), which is simpler to reason about. SetForEntity adds a delta which requires knowing the current value first.
+
+**Calling convention note**: The float parameter is in **xmm2** (third register slot), not passed on the stack. This requires the C++ function pointer to be declared with a float in the third parameter position, or use inline assembly / intrinsics to ensure the float lands in xmm2.
 
 ---
 
@@ -423,35 +572,70 @@ Always calls `FactionRelation_RemoveBoost` first to clear any existing boost for
 
 ### 4.1 Float to UI Integer
 
-The internal float `[-1.0, +1.0]` maps to UI integer `[-30, +30]` using a **threshold tree** stored in `g_FactionRegistry`.
+**Address:** `FactionRelation_FloatToUIInt` @ `0x14099E540`
 
-The general formula uses logarithmic interpolation:
+The internal float `[-1.0, +1.0]` maps to UI integer `[-30, +30]` using a **threshold BST** stored in `g_FactionManager`. Each tree node stores a float threshold (`+0x1C`) and an int32 UI value (`+0x20`). The function performs a lower-bound search, then **piecewise interpolates** between the bracketing pair of nodes.
+
+**Threshold table** (from `libraries/factions.xml` comment, loaded into BST at runtime):
+
+| Float | UI | Float | UI |
+|-------|-----|-------|-----|
+| -1.0 | -30 | +0.0032 | +5 |
+| -0.5 | -27 | +0.01 | +10 |
+| -0.32 | -25 | +0.032 | +15 |
+| -0.1 | -20 | +0.1 | +20 |
+| -0.032 | -15 | +0.32 | +25 |
+| -0.01 | -10 | +0.5 | +27 |
+| -0.0032 | -5 | +1.0 | +30 |
+
+**Three interpolation branches** (determined by the sign of the bracketing thresholds):
+
+| Condition | Method | Epsilon | Helper |
+|-----------|--------|---------|--------|
+| Both thresholds negative | Log interpolation (negated values) | Subtract 1e-5 | `LogInterpolate` @ `0x141487290` |
+| Both thresholds positive | Log interpolation (direct) | Add 1e-5 | `LogInterpolate` @ `0x141487290` |
+| Straddles zero (lower <= 0, upper >= 0) | Linear interpolation | None | `LinearInterpolate` @ `0x1414871C0` |
+
+All branches end with `cvttss2si` (truncate toward zero).
+
+**Log interpolation formula** (`LogInterpolate` @ `0x141487290`):
 
 ```
-For |f| >= threshold:
-    ui = lower_ui + (upper_ui - lower_ui) * log(f / lower_f) / log(upper_f / lower_f)
-
-For |f| < threshold (near zero):
-    ui = linear_interpolation(lower_ui, upper_ui, f, lower_f, upper_f)
+result = lower_ui + (upper_ui - lower_ui) * logf(input / lower_thresh) / logf(upper_thresh / lower_thresh)
 ```
 
-**Known thresholds** (from game MD scripts):
-- `-0.0032` maps to UI `-5` (boundary of "neutral" range)
-- `+0.0032` maps to UI `+5`
-- Each `0.0064` of positive change in the neutral range corresponds to UI +10
+Guards: returns `lower_ui` if `input <= lower_thresh` or `lower_thresh <= 0`; returns `upper_ui` if `input >= upper_thresh`.
 
-The threshold of `0.0032` is where the system switches between log and linear interpolation. Epsilon `1e-5` is added/subtracted before casting to int for rounding stability.
-
-### 4.2 Approximate Inverse (UI Integer to Float)
-
-The inverse of the float-to-UI conversion can be approximated:
+**Linear interpolation formula** (`LinearInterpolate` @ `0x1414871C0`):
 
 ```
-Log region (|ui| >= 5):  float = sign * 10^(|ui|/10) / 1000
-Linear region (|ui| < 5): float = sign * |ui| * 0.00064
+result = lower_ui + (input - lower_thresh) * (upper_ui - lower_ui) / (upper_thresh - lower_thresh)
 ```
 
-Using the midpoint of each bucket (`|ui| + 0.5`) avoids threshold rounding errors when the game truncates via `cvttss2si`.
+For the zero-crossing region `[-0.0032, +0.0032]`, this simplifies to: `ui = input / 0.00064`. One UI step = 0.00064 float change.
+
+**Approximate single formula** (from factions.xml comment, accurate to +/-1 UI step):
+
+```
+ui ~ 10 * log10(|float| * 1000) * sign(float)
+```
+
+This approximation breaks down in the linear region (|float| < 0.0032, |UI| < 5) where the log function goes to negative infinity but the binary uses linear interpolation through zero.
+
+### 4.2 Inverse: UI Integer to Float (Piecewise)
+
+The inverse is **piecewise** -- two different formulas for the two interpolation regions:
+
+```
+Log region (|ui| >= 5):    float = sign(ui) * 10^((|ui| + 0.5) / 10) / 1000
+Linear region (|ui| < 5):  float = sign(ui) * (|ui| + 0.5) * 0.00064
+```
+
+The `+0.5` targets the midpoint of each integer bucket, avoiding threshold rounding errors when the forward conversion truncates via `cvttss2si`.
+
+**WARNING:** A single formula `float = 10^((|ui|+0.5)/10) / 1000` (without the linear branch) produces **wrong results for UI values 0 and 1**. At UI=0, it gives float 0.00112 which the binary converts back to UI 1 (not 0). At UI=1, it gives float 0.00141 which converts back to UI 2 (not 1). All values |UI| >= 2 roundtrip correctly even with the single formula, but the piecewise version is the correct one.
+
+**Roundtrip verification** (piecewise inverse -> binary forward, all 30 positive values): PASS.
 
 ### 4.3 UI Integer to LED
 
@@ -469,20 +653,27 @@ int UIIntToLED(int ui) {
 }
 ```
 
-### 4.4 Approximate Float-to-UI Reference Table
+### 4.4 Float-to-UI Reference Table
 
-| Float Range | UI Range | LED | Relation |
-|-------------|----------|-----|----------|
-| -1.0 to -0.8 | -30 to -25 | -4 | Kill |
-| -0.8 to -0.3 | -25 to -15 | -3/-2 | Enemy |
-| -0.3 to -0.0032 | -15 to -5 | -2/-1 | Hostile |
-| -0.0032 to +0.0032 | -5 to +5 | -1/0/+1 | Neutral |
-| +0.0032 to +0.3 | +5 to +15 | +1/+2 | Friendly |
-| +0.3 to +0.8 | +15 to +25 | +2/+3 | Friend |
-| +0.8 to +1.0 | +25 to +30 | +3/+4 | Ally |
+| Float Threshold | UI Value | LED | Relation (UI bracket) |
+|-----------------|----------|-----|----------------------|
+| -1.0 | -30 | -4 | Hostile (deep) |
+| -0.5 | -27 | -3 | Hostile |
+| -0.32 | -25 | -3 | Hostile |
+| -0.1 | -20 | -2 | Enemy |
+| -0.032 | -15 | -2 | Enemy |
+| -0.01 | -10 | -1 | Enemy (near neutral) |
+| -0.0032 | -5 | -1 | Enemy (slight) |
+| 0 | 0 | 0 | Neutral |
+| +0.0032 | +5 | +1 | Neutral (slight positive) |
+| +0.01 | +10 | +1 | Friendly |
+| +0.032 | +15 | +2 | Friendly |
+| +0.1 | +20 | +2 | Friendly |
+| +0.32 | +25 | +3 | Allied |
+| +0.5 | +27 | +3 | Allied |
+| +1.0 | +30 | +4 | Allied (deep) |
 
-> Note: Exact breakpoints depend on the threshold tree loaded from game data at runtime.
-> The values above are approximate based on MD script comments and interpolation analysis.
+> Source: `libraries/factions.xml` header comment. These are the exact thresholds loaded into the BST at runtime. Between thresholds, piecewise log interpolation (or linear in the zero-crossing band) produces intermediate integer values.
 
 ---
 
@@ -643,68 +834,188 @@ Three independent "known" concepts control faction visibility:
 
 | Address | Name | Type | Description |
 |---------|------|------|-------------|
-| `0x146C73F80` | `g_FactionRegistry` | FactionRegistry* | Master faction registry (hash map + threshold trees) |
-| `0x1438776C8` | `g_PlayerFactionContext` | FactionClass* | Current player's faction object |
-| `0x143C9FA58` | `g_GameUniverse` | GameUniverse* | Game universe root (event queues at +552, +560) |
-| `0x143C9A530` | *(unnamed)* | ReasonEntry[16] | Sorted reason lookup table (BSS) |
-| `0x143C9A6B0` | *(unnamed)* | int64_t | Reason table entry count |
-| `0x143C9A840` | *(unnamed)* | int32_t | Default reason ID (0) |
+| `0x146C7A398` | `g_FactionManager` | FactionManager* | Master faction registry (RB tree + threshold trees) |
+| `0x14387E708` | `g_PlayerFaction` | FactionClass* | Current player's faction object |
+| `0x143CA6D68` | `g_GameUniverse` | GameUniverse* | Game universe root (event queues at +552, +560) |
+| `0x143CA1840` | *(unnamed)* | ReasonEntry[16] | Sorted reason lookup table (BSS) |
+| `0x143CA19C0` | *(unnamed)* | int64_t | Reason table entry count |
+| `0x143CA1B50` | *(unnamed)* | int32_t | Default reason ID (0) |
 
 ---
 
-## 9. FNV-1a Hash (Faction String Lookup)
+## 9. FNV-1 Hash (Faction String Lookup)
 
-The faction registry uses FNV-1a to hash faction ID strings:
+The faction registry uses **FNV-1** (multiply-then-XOR) to hash faction ID strings. This is a non-standard variant: 32-bit offset basis in a 64-bit register.
+
+> **Correction (2026-03-28):** Previously labeled "FNV-1a". Disassembly at two independent call sites confirms `imul` (multiply) BEFORE `xor` — this is FNV-1, not FNV-1a. Same constants, different operation order, different output values.
 
 ```c
-uint64_t fnv1a(const char* str) {
-    uint64_t hash = 2166136261;      // 0x811C9DC5
+uint64_t fnv1_hash(const char* str) {
+    uint64_t hash = 2166136261;      // 0x811C9DC5 (32-bit offset basis, zero-extended)
     size_t len = strlen(str);
     for (size_t i = 0; i < len; i++) {
-        hash = (uint64_t)str[i] ^ (16777619 * hash);  // 0x01000193
+        hash = hash * 16777619;       // 0x01000193 — multiply FIRST
+        hash = hash ^ (uint64_t)str[i]; // XOR SECOND
     }
     return hash;
 }
 ```
 
-The registry at `g_FactionRegistry + 16` is a red-black tree keyed by this hash. Node layout: key at `node + 32`, faction data pointer at `node + 48`.
+**Assembly confirmation** (from `GetFactionRelationStatus2` at `0x140ABB330`):
+```asm
+imul    r9, 1000193h             ; hash *= FNV_PRIME  (MULTIPLY FIRST)
+xor     r9, rcx                  ; hash ^= char       (XOR SECOND)
+```
+
+The registry at `g_FactionManager + 16` is an Egosoft custom red-black tree keyed by this hash. Node layout: key at `node + 0x20`, faction data at `node + 0x30` (see SUBSYSTEMS.md §2 for `EgoRBTreeNode` layout).
 
 ---
 
-## 10. Address Table
+## 10. Alliance / Coalition System
+
+### 10.1 Overview
+
+X4 has **two distinct "alliance" systems** that share some code paths:
+
+1. **Faction Coalition System** -- a data-driven grouping defined in `coalitions.xml` where factions share a coalition ID. This is the system that `IsSameAlliance()` checks first.
+2. **Ventures Online Coalition** -- a multiplayer-specific guild system for the Ventures DLC (`ego_dlc_ventures`). Uses `OnlineJoinCoalition()`, `OnlineGetCurrentCoalition()`. Completely separate from faction relations.
+
+In the **base game and all current DLCs**, `coalitions.xml` is empty:
+```xml
+<!-- empty on purpose - imported through the ego_dlc_ventures extension -->
+<coalitions />
+```
+
+The Ventures extension populates this at runtime for online play only. **No DLC populates it for single-player faction alliances.** The "Allied" relation status (status=4) is therefore **never triggered by coalition membership** in normal gameplay -- it exists as infrastructure that could be used but currently is not.
+
+### 10.2 IsSameAlliance Internal Logic
+
+**Address:** `0x140999560` (size 0x5E)
+**Signature:** `bool IsSameAlliance(FactionClass* a, FactionClass* b, uint8_t use_true_owner)`
+
+```c
+bool IsSameAlliance(FactionClass* a, FactionClass* b, uint8_t use_true_owner) {
+    return b && (CheckCoalitionAlly(a, b, use_true_owner)
+              || CheckAllianceByVtable(b, a, use_true_owner));
+}
+```
+
+**Path 1 -- Coalition-based (`CheckCoalitionAlly` @ `0x140999320`):**
+1. Gets coalition container from faction_b via vtable+6048
+2. If container exists and has type flag 35 (coalition type):
+   - Reads coalition IDs for both factions via vtable+5600/5616 (depending on `use_true_owner`)
+   - Calls `CheckCoalitionRange(faction_a, coalition_id_a, relation_float, range=5)` where range 5 = "ally" (0.5 to 1.0)
+   - If ally range fails, checks range 6 = "member" (0.1 to 1.0) AND verifies the entity is an online Venture object
+3. If no coalition container, falls back to reading faction IDs directly and checking ally range
+
+**Path 2 -- Vtable-based (`CheckAllianceByVtable` @ `0x1403ACD20`):**
+- Uses vtable+5888 to get alliance membership info
+- Checks against range 5 (ally) via `CheckCoalitionRange`
+- This path handles game-universe-level alliance checks (e.g., player faction context)
+
+### 10.3 Coalition ID Storage
+
+Each faction stores a coalition ID at:
+```
+FactionClass + 640 (RelationData pointer) -> +620 (int32 coalition_id)
+```
+
+**`GetCoalitionID` @ `0x140997800`:**
+- Returns 0 if coalition_id <= 0
+- Returns 0 if coalition_id not found in coalition registry BST
+- Returns -1 for special sentinel case (coalition_id == -1)
+- Coalition registry is a BST at `g_CoalitionRegistry` (`0x146C7A4B8`)
+
+### 10.4 Coalition Registry (`0x146C7A4B8`)
+
+This global is a red-black tree keyed by integer coalition ID. Each node stores:
+- `node+32`: int32 coalition ID (key)
+- `node+40`: pointer to coalition data (member tree, alliance/enemy flags)
+
+The same global (`0x146C7A4B8`) is also referenced by FightRule functions, suggesting coalitions and fight rules share a registry or are adjacent in the same manager object.
+
+### 10.5 Script Properties
+
+From `scriptproperties.xml`, factions expose these coalition properties:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `faction.coalition` | integer | Coalition ID (null if not in a coalition) |
+| `faction.iscoalitionally.{$faction}` | boolean | Both factions have AND share the same coalition |
+| `faction.iscoalitionenemy.{$faction}` | boolean | Both factions have coalitions but different ones |
+
+### 10.6 Game Script Usage
+
+The `iscoalitionally` property is used in base game scripts:
+- `aiscripts/fight.attack.object.station.xml` -- checks if station owner is coalition-ally of player
+- `aiscripts/interrupt.attacked.xml` -- checks if attacker's true owner is coalition-ally
+- `md/notifications.xml` -- checks coalition-ally for notification filtering
+- `md/rml_escort_ambiguous.xml`, `md/rml_repairobject.xml` -- coalition-ally checks for missions
+
+All these scripts use `iscoalitionally.{faction.player}` -- they would activate if coalitions were populated but currently return false since no coalitions exist in single-player.
+
+### 10.7 Relation Ranges (Complete Table)
+
+From `factions.xml` header, confirmed by `FactionRelation_IsInRelationRange` @ `0x140118C20`:
+
+| Range Name | Float Min | Float Max | Used By |
+|------------|-----------|-----------|---------|
+| self | 1.0 | 1.0 | `GetFactionRelationStatus2` (status=5 is separate check) |
+| ally | 0.5 | 1.0 | `IsSameAlliance` range 5 check |
+| member | 0.1 | 1.0 | `IsSameAlliance` range 6 check (online only) |
+| friend | 0.01 | 1.0 | Used for "Friendly" docking etc. |
+| neutral | -0.01 | 0.01 | Zero band |
+| dock | (composite) | (composite) | `GetFactionRelationStatus2` range 7 |
+| enemy | -1.0 | -0.01 | `GetFactionRelationStatus2` range 4 |
+| killmilitary | -1.0 | -0.1 | Military engagement threshold |
+| kill | -1.0 | -0.32 | Kill-on-sight threshold |
+| nemesis | -1.0 | -1.0 | `GetFactionRelationStatus2` range 9 |
+
+---
+
+## 11. Address Table
+
+> Addresses updated to build 900 (2026-03-28). All behavioral descriptions verified by decompilation.
 
 | Address | Name | Size | Description |
 |---------|------|------|-------------|
-| `0x140AB9160` | `GetFactionRelationStatus2` | 0x21F | Read faction-player relation status |
-| `0x14017E950` | `SetFactionRelationToPlayerFaction` | 0x180 | Write faction-player relation (Lua FFI) |
-| `0x14099C780` | `FactionRelation_FloatToUIInt` | 0x1C4 | Float [-1,+1] to UI int [-30,+30] |
-| `0x14030E6B0` | `FactionRelation_GetFloat` | 0x3C | Read float between two factions |
-| `0x1409940E0` | `FactionRelation_ApplyMutation` | 0x2CE | Core mutation (boost insert + events) |
-| `0x1404353A0` | `FactionRelation_ReadRawFloat` | 0x113 | Two-layer float read (boost/base maps) |
-| `0x1402CAE60` | `FactionRelation_LookupReasonID` | 0x160 | Binary search reason string -> int |
-| `0x140881870` | `FactionRelation_ComputeUIValue` | 0xEE | Orchestrate: read float -> UI int |
-| `0x140881660` | `FactionRelation_ComputeLEDValue` | 0xD9 | Orchestrate: read float -> LED value |
-| `0x140881B80` | `FactionRelation_UIIntToLED` | 0x83 | UI int -> LED color index [-4,+4] |
-| `0x140994620` | `FactionRelation_CheckInRange` | 0x68 | Check if relation is in named range |
-| `0x1409977A0` | `FactionRelation_IsSameAlliance` | 0x42 | Check alliance membership |
-| `0x14099C160` | `FactionRelation_CheckRangeChanged` | 0x148 | Detect range boundary crossing |
-| `0x140A07A50` | `FactionRelation_InsertBoost` | 0xC2 | Insert boost into boost map |
-| `0x1404277B0` | `FactionRelation_RemoveBoost` | 0xF8 | Remove boost from boost map |
-| `0x140993DC0` | `FactionRelation_ApplyAndNotify` | 0x320 | Fire change events for player faction |
-| `0x1409FE7D0` | `FactionRelation_InitReasonTable` | 0x6EB | Initialize reason string lookup table |
-| `0x1409943B0` | `FactionRelation_SetForEntity` | 0x6F | Entity-level relation setter |
-| `0x140B92BF0` | `MD_FactionRelationAction_Execute` | 0x1BA | MD script action handler |
-| `0x141483170` | `FactionRelation_LogInterpolate` | 0x97 | Log interpolation for float->UI |
-| `0x1414830A0` | `FactionRelation_LinearInterpolate` | 0x58 | Linear interpolation for float->UI |
-| `0x1409B0D20` | `FactionRelation_ResolveTarget` | - | Resolve target faction for status check |
+| `0x140ABB2A0` | `GetFactionRelationStatus2` | 0x21F | Read faction-player relation status |
+| `0x14017F820` | `SetFactionRelationToPlayerFaction` | 0x180 | Write faction-player relation (Lua FFI) |
+| `0x14099E540` | `FactionRelation_FloatToUIInt` | 0x1C4 | Float [-1,+1] to UI int [-30,+30] |
+| `0x14030F5C0` | `FactionRelation_GetFloat` | 0x3C | Read float between two factions |
+| `0x140995EA0` | `FactionRelation_ApplyMutation` | 0x2CE | Core mutation (boost insert + events) |
+| `0x140436260` | `FactionRelation_ReadRawFloat` | 0x113 | Two-layer float read (boost/base maps) |
+| `0x1402CBF00` | `FactionRelation_LookupReasonID` | 0x160 | Binary search reason string -> int |
+| `0x1408831E0` | `FactionRelation_ComputeUIValue` | 0x23B | Orchestrate: read float -> UI int |
+| `0x140882FD0` | `FactionRelation_ComputeLEDValue` | 0xBD | Orchestrate: read float -> LED value |
+| `0x1408834F0` | `FactionRelation_UIIntToLED` | 0x87 | UI int -> LED color index [-4,+4] |
+| `0x1409963E0` | `FactionRelation_CheckInRange` | 0x79 | Check if relation is in named range |
+| `0x140999560` | `FactionRelation_IsSameAlliance` | 0x5E | Check alliance membership (two-path: coalition + vtable) |
+| `0x140999320` | `FactionRelation_CheckCoalitionAlly` | 0x1A6 | Coalition-based alliance check (range 5 ally, range 6 member+online) |
+| `0x1403ACD20` | `FactionRelation_CheckAllianceByVtable` | 0x82 | Vtable-based alliance check (vtable+5888, range 5) |
+| `0x140997800` | `FactionRelation_GetCoalitionID` | 0x72 | Read coalition ID from RelationData+620 |
+| `0x140999140` | `FactionRelation_CheckCoalitionRange` | 0x184 | Check coalition membership + relation range |
+| `0x140118C20` | `FactionRelation_IsInRelationRange` | 0x9C | Check if float is within named relation range |
+| `0x1404E8310` | `FactionRelation_IsOnlineVentureEntity` | 0x92 | Check if entity is Ventures/online object |
+| `0x1402939F0` | `Lua_OnlineJoinCoalition` | 0xD7 | Lua handler for Ventures coalition join (int32 ID) |
+| `0x14099DF20` | `FactionRelation_CheckRangeChanged` | 0x14E | Detect range boundary crossing |
+| `0x140A098C0` | `FactionRelation_InsertBoost` | 0xB5 | Insert boost into boost map |
+| `0x140428670` | `FactionRelation_RemoveBoost` | 0xF9 | Remove boost from boost map |
+| `0x140995B80` | `FactionRelation_ApplyAndNotify` | 0x31E | Fire change events for player faction |
+| `0x140A00640` | `FactionRelation_InitReasonTable` | 0x6EB | Initialize reason string lookup table |
+| `0x140996170` | `FactionRelation_SetForEntity` | 0x83 | Entity-level relation setter |
+| `0x140B94C40` | `MD_FactionRelationAction_Execute` | 0x1BA | MD script action handler |
+| `0x141487290` | `FactionRelation_LogInterpolate` | 0xB2 | Log interpolation for float->UI |
+| `0x1414871C0` | `FactionRelation_LinearInterpolate` | 0x55 | Linear interpolation for float->UI |
 
 ### Global Variables
 
 | Address | Name | Description |
 |---------|------|-------------|
-| `0x146C73F80` | `g_FactionRegistry` | Master faction registry |
-| `0x1438776C8` | `g_PlayerFactionContext` | Player's faction object |
-| `0x143C9FA58` | `g_GameUniverse` | Game universe root |
-| `0x143C9A530` | Reason table (sorted) | Binary-search reason entries |
-| `0x143C9A6B0` | Reason table count | Number of entries |
-| `0x143C9A840` | Default reason ID | Value 0 |
+| `0x146C7A398` | `g_FactionManager` | Master faction registry (RB tree at +16), relation ranges (BST at +160) |
+| `0x146C7A4B8` | `g_CoalitionRegistry` | Coalition/FightRule registry (RB tree, keyed by coalition ID int32) |
+| `0x14387E708` | `g_PlayerFaction` | Player's faction object |
+| `0x143CA6D68` | `g_GameUniverse` | Game universe root |
+| `0x143CA1840` | Reason table (sorted) | Binary-search reason entries |
+| `0x143CA19C0` | Reason table count | Number of entries |
+| `0x143CA1B50` | Default reason ID | Value 0 |

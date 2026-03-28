@@ -1,8 +1,10 @@
 # X4 Attention Level System (OOS Simulation) -- Reverse Engineering Notes
 
-> **Binary:** X4.exe v9.00 (build 900) -- **Date:** 2026-03
+> **Binary:** X4.exe v9.00 · **Date:** 2026-03
 >
 > All addresses are absolute (imagebase `0x140000000`). Subtract imagebase to get RVA.
+>
+> **Note:**: Behavioral descriptions not yet re-verified.
 
 ---
 

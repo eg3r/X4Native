@@ -1,6 +1,6 @@
 # X4 Subsystem Architecture — Reverse Engineering Notes
 
-> **Binary:** X4.exe v9.00 (build 600626) · **Date:** 2026-03
+> **Binary:** X4.exe v9.00 · **Date:** 2026-03
 >
 > All addresses are absolute (imagebase `0x140000000`). Subtract imagebase to get RVA.
 
@@ -8,73 +8,113 @@
 
 ## 1. Summary
 
-X4's simulation is driven by a **binary search tree (BST) of subsystem objects**. Each frame, `UpdateSubsystems` (`sub_140E999D0`) walks this tree and calls each subsystem's virtual update method. This single mechanism powers all game logic — MD cues, AI, UI, events, trade, combat — everything.
+X4's simulation is driven by an **Egosoft custom red-black tree of subsystem objects**. Each frame, `UpdateSubsystems_RBTreeWalk` (`0x140EA06E0`) walks this tree in-order and calls each subsystem's virtual update method. This single mechanism powers all game logic — MD cues, AI, UI, events, trade, combat — everything.
+
+> **Terminology note:** Previous versions of this document called the data structure a "BST" (Binary Search Tree). Binary re-analysis (2026-03-28) confirmed it is a **self-balancing red-black tree** — Probably Egosoft's own implementation, NOT `std::map`/`std::set`. The same RB tree implementation is used pervasively throughout the binary (690+ insertion sites share a universal `RBTree_InsertFixup` at `0x1400B2EA0`).
 
 ---
 
-## 2. BST Structure
+## 2. Red-Black Tree Structure
 
 ```mermaid
 graph TD
-    ROOT["BST Root\n<code>off_143139400</code>"] --> A["Subsystem A"]
-    ROOT --> B["Subsystem B"]
-    A --> C["CacheSwapListener\n<i>first registered</i>"]
-    A --> D["Subsystem D"]
-    B --> E["AnarkLuaEngine\n<i>Lua dispatch</i>"]
-    B --> F["Subsystem F"]
+    ROOT["RB Tree Root\n<code>0x143148348</code>"] --> A["Subsystem A\n<i style='color:#ff6666'>RED</i>"]
+    ROOT --> B["Subsystem B\n<i style='color:#333'>BLACK</i>"]
+    A --> C["CacheSwapListener\n<i>leftmost / first in walk</i>\n<i style='color:#333'>BLACK</i>"]
+    A --> D["Subsystem D\n<i style='color:#333'>BLACK</i>"]
+    B --> E["AnarkLuaEngine\n<i>Lua dispatch</i>\n<i style='color:#ff6666'>RED</i>"]
+    B --> F["Subsystem F\n<i style='color:#333'>BLACK</i>"]
     D --> G["..."]
     D --> H["..."]
     E --> I["..."]
     F --> J["..."]
 
-    SENT["Sentinel\n<code>off_1431393E0</code>"] -.->|"end marker"| ROOT
+    SENT["Sentinel\n<code>0x143148340</code>"] -.->|"end marker\n(all leaf nil-ptrs point here)"| ROOT
+    LEFT["Leftmost Ptr\n<code>0x143148360</code>"] -.->|"iteration start"| C
 
     style ROOT fill:#6b3a8a,color:#fff
-    style C fill:#4a4a4a,color:#fff
+    style C fill:#cdcdcd,color:#000
     style E fill:#8b1a1a,color:#fff
     style SENT fill:#aabbcc,color:#000,stroke-dasharray: 10 10
+    style LEFT fill:#aabbcc,color:#000,stroke-dasharray: 10 10
 ```
 
-> The tree structure above is illustrative — actual node ordering depends on registration order and BST key comparisons. The walk is in-order (left → node → right).
+> The tree structure above is illustrative — actual node ordering depends on registration order and key comparisons. The walk is in-order (left → node → right), starting from the **leftmost** node (minimum key).
 
 ### Globals
 
 | Address | Purpose |
 |---------|---------|
-| `off_143139400` | BST root pointer |
-| `off_1431393E0` | BST sentinel / end node |
+| `0x143148340` | RB tree sentinel node (nil marker — all leaf pointers point here) |
+| `0x143148348` | RB tree root pointer |
+| `0x143148360` | RB tree leftmost pointer (iteration start — minimum key node) |
+| `0x143148368` | RB tree node count |
 
-### Node Layout
+### Egosoft RB Tree Node Layout
 
-Each BST node is a subsystem object with a vtable. The tree is walked in-order (left → node → right), and each node's update is dispatched via:
+All red-black trees in the binary share this common node layout. This is **NOT** MSVC `std::map` — the field order differs (Parent/Left/Right vs MSVC's Left/Parent/Right), color is a DWORD (not a byte), and there is no `_Isnil` flag (sentinel detected by pointer comparison instead).
 
 ```c
-node->vtable[1](node);   // offset +8 in vtable
+struct EgoRBTreeNode {
+    EgoRBTreeNode* parent;    // +0x00
+    EgoRBTreeNode* left;      // +0x08
+    EgoRBTreeNode* right;     // +0x10
+    uint32_t       color;     // +0x18 (0 = RED, 1 = BLACK)
+    uint32_t       _pad;      // +0x1C
+    // --- key starts at +0x20 (type varies: QWORD hash, pointer, etc.) ---
+    // --- value follows key (alignment-dependent) ---
+};
 ```
+
+| Offset | Field | MSVC `std::map` equivalent | Difference |
+|--------|-------|---------------------------|------------|
+| +0x00 | **Parent** | `_Left` (+0x00) | **Swapped** — MSVC puts Left first |
+| +0x08 | **Left** | `_Parent` (+0x08) | **Swapped** — MSVC puts Parent second |
+| +0x10 | Right | `_Right` (+0x10) | Same position |
+| +0x18 | Color (DWORD: 0/1) | `_Color` (char) + `_Isnil` (char) | Wider type, no `_Isnil` flag |
+
+> **Coexistence note:** Both Egosoft's custom RB trees and MSVC `std::map`/`std::set` RB trees exist in the binary. They have **different node layouts** (Parent/Left/Right vs Left/Parent/Right) and different sentinel patterns. The `*(WORD*)(node+24) = 0x0101` pattern seen at 100+ sites belongs to **MSVC STL** sentinel initialization (`{_Color=BLACK, _Isnil=TRUE}`), NOT to Egosoft's trees. Egosoft's sentinel is detected by pointer comparison only — its color field is never read. Verified 2026-03-28 via decompilation of `RBTree_InsertFixup`, `RBTree_DeleteFixup`, `RBTree_RotateLeft`, `RBTree_RotateRight`.
+
+For subsystem nodes, the key at +0x20 is a pointer to the subsystem object. Update dispatch reads this pointer and calls through the subsystem's vtable:
+
+```c
+subsys = node->key;           // node + 0x20 = subsystem object pointer
+subsys->vtable[1](subsys);    // offset +8 in vtable
+```
+
+### Universal Rebalance Functions
+
+These two functions are the smoking gun proving Egosoft uses red-black trees — they contain textbook Cormen/CLRS rebalancing logic (uncle color checks, recoloring, left/right rotations):
+
+| Function | Address | Callers | Purpose |
+|----------|---------|---------|---------|
+| `RBTree_InsertFixup` | `0x1400B2EA0` | **690** | Post-insertion rebalance (fix red-red violations) |
+| `RBTree_DeleteFixup` | `0x1400B28B0` | **241** | Post-deletion rebalance (fix black-height violations) |
 
 ### Known Subsystem — CacheSwapListener
 
-The first subsystem registered into the BST is `CacheSwapListener` (identified via RTTI). This is a low-level cache management subsystem that runs before any game logic.
+The first subsystem registered into the tree is `CacheSwapListener` (identified via RTTI at `0x140EA0540`). This is a low-level cache management subsystem that runs before any game logic. Its destructor (`0x140EA0600`) performs RB tree node removal with rebalancing.
 
 ---
 
-## 3. Update Dispatch (sub\_140E999D0)
+## 3. Update Dispatch (`UpdateSubsystems_RBTreeWalk`)
 
-### Function: UpdateSubsystems
+### Function: UpdateSubsystems_RBTreeWalk
 
-**Address:** `0x140E999D0` (RVA `0xE999D0`)
+**Address:** `0x140EA06E0`
 
 This is the entire game simulation in a single function call:
 
 ```c
-void UpdateSubsystems() {
+void UpdateSubsystems_RBTreeWalk() {
     // Thread safety check
-    if (is_main_thread()) {           // TLS + 0x788
-        // Normal path: walk BST, call each subsystem
-        Node* node = bst_first(root);
-        while (node != sentinel) {
-            node->vtable[1](node);    // subsystem update
-            node = bst_next(node);
+    if (*(DWORD*)(TLS + 0x314)) {         // main thread flag (decimal offset 788)
+        // Normal path: walk RB tree in-order, call each subsystem
+        EgoRBTreeNode* node = g_SubsysTree_Leftmost;  // 0x143148360 — minimum key
+        while (node != &g_SubsysTree_Sentinel) {       // 0x143148340
+            void* subsys = node->key;                   // node + 0x20
+            subsys->vtable[1](subsys);                  // subsystem update dispatch
+            node = rb_tree_next(node);                  // in-order successor
         }
     } else {
         // Cross-thread path (should never happen in practice)
@@ -86,14 +126,41 @@ void UpdateSubsystems() {
 }
 ```
 
+> **TLS offset note:** The main-thread check reads `TLS + 0x314` (decimal 788). Previous versions of this doc wrote `TLS + 0x788` which is incorrect — `0x788` is 1928 decimal, not 788.
+
+```mermaid
+graph LR
+    subgraph "UpdateSubsystems_RBTreeWalk (0x140EA06E0)"
+        START["Leftmost\n(0x143148360)"] --> WALK["In-order walk"]
+        WALK --> DISPATCH["subsys→vtable[1](subsys)"]
+        DISPATCH --> NEXT["rb_tree_next()"]
+        NEXT -->|"node ≠ sentinel"| DISPATCH
+        NEXT -->|"node = sentinel"| DONE["Frame complete"]
+    end
+
+    style START fill:#2d5a27,color:#fff
+    style DISPATCH fill:#8b1a1a,color:#fff
+    style DONE fill:#4a4a4a,color:#fff
+```
+
 ### Normal Frame vs Suspended Frame
 
 | Mode | Update Mechanism | What Runs |
 |------|-----------------|-----------|
-| **Normal** (`!isSuspended`) | Full BST walk via `sub_140E999D0` | All subsystems — game logic, AI, MD, UI, events |
+| **Normal** (`!isSuspended`) | Full RB tree walk via `UpdateSubsystems_RBTreeWalk` | All subsystems — game logic, AI, MD, UI, events |
 | **Suspended** (`isSuspended`) | Flat array of 17 subsystems at `qword_146C6B9A0 + 136` | Keep-alive only — minimal rendering, no simulation |
 
-The suspended-mode array is a separate data structure from the BST. It contains only the subsystems needed to keep the Vulkan renderer alive when the game is minimized or lost focus.
+The suspended-mode array is a separate data structure from the RB tree. It contains only the subsystems needed to keep the Vulkan renderer alive when the game is minimized or lost focus.
+
+### Key Subsystem Tree Functions
+
+| Function | Address | Purpose |
+|----------|---------|---------|
+| `UpdateSubsystems_RBTreeWalk` | `0x140EA06E0` | Per-frame in-order walk + vtable dispatch |
+| `SubsysRBTree_Insert` | `0x140EE06A0` | Insert subsystem into tree (calls `RBTree_InsertFixup`) |
+| `SubsysRBTree_AllocNode` | `0x140EE0C10` | Allocate 48-byte tree node from pool |
+| `CacheSwapListener_ctor` | `0x140EA0540` | First subsystem registered |
+| `CacheSwapListener_dtor_RBTreeRemove` | `0x140EA0600` | Remove + rebalance on destruction |
 
 ---
 
@@ -222,36 +289,32 @@ If a host and client have different DLCs installed, sectors from missing DLCs wi
 
 ## 5. AnarkLuaEngine — The Lua Bridge Subsystem
 
-The Anark UI engine is the subsystem responsible for all Lua execution. It sits within the BST and is called each frame as part of the subsystem walk.
+The Anark UI engine is the subsystem responsible for all Lua execution. It sits within the RB tree and is called each frame as part of the subsystem walk.
 
-### Vtable: `0x142b47f88`
+### Vtable: `0x142B55BC0`
+
+> **Address correction (2026-03-28):** Previous doc claimed `0x142B47F88` — that address is actually the string `"online_save"` in the binary. The real vtable was found via RTTI: `.?AVAnarkLuaEngine@XAnark@UI@@` at `0x1431C5E00` → CompleteObjectLocator → vtable.
 
 | Index | Address | Purpose |
 |-------|---------|---------|
-| `[0]` | `0x140AABA60` | Destructor or base method |
-| `[1]` | `0x141342080` | String/memory management |
-| `[2]` | `0x1413423C0` | — |
-| `[3]` | `0x141342050` | — |
-| `[4]` | `0x141342920` | — |
-| `[5]` | `0x140AAC430` | **Event dispatcher** — fires onUpdate etc. to Lua |
-| `[6]` | `0x141342980` | — |
-| `[7]` | `0x140AABFA0` | — |
+| `[0]` | `0x140AAF730` | Destructor or base method |
+| `[5]` | `0x140AB0100` | **Event dispatcher** — fires onUpdate etc. to Lua |
 
 ### Dispatch Chain
 
 ```mermaid
 graph TD
-    BST["UpdateSubsystems\\nBST walk"] --> ALE["AnarkLuaEngine::vtable[5]()\\n<code>sub_140AAC430</code>"]
-    ALE --> UID["UI Event Dispatcher\\n<code>sub_141342720</code>"]
-    UID --> FLC["Fire Lua Callbacks\\n<code>sub_141344A70</code>"]
+    RBT["UpdateSubsystems_RBTreeWalk\nRB tree in-order walk"] --> ALE["AnarkLuaEngine::vtable[5]\n<code>0x140AB0100</code>"]
+    ALE --> UID["UI Event Dispatcher"]
+    UID --> FLC["Fire Lua Callbacks"]
     FLC --> E1["onSlideExit"]
     FLC --> E2["onDeactivate"]
     FLC --> E3["onInitialize"]
     FLC --> E4["onActivate"]
     FLC --> E5["onSlideEnter"]
-    FLC --> E6["<b>onUpdate</b>\\n<i>per-frame game tick to Lua</i>"]
+    FLC --> E6["<b>onUpdate</b>\n<i>per-frame game tick to Lua</i>"]
 
-    style BST fill:#6b3a8a,color:#fff
+    style RBT fill:#6b3a8a,color:#fff
     style ALE fill:#8b1a1a,color:#fff
     style UID fill:#1a4a6e,color:#fff
     style E6 fill:#2d5a27,color:#fff,stroke:#4CAF50,stroke-width:2px
@@ -259,15 +322,7 @@ graph TD
 
 ### How AnarkLuaEngine Is Called
 
-The engine is NOT called directly from code — it's called **only via vtable dispatch** from the BST walk. Cross-references to vtable[5] (`0x140AAC430`):
-
-| Address | Location | Type |
-|---------|----------|------|
-| `0x142b47fb0` | AnarkLuaEngine vtable entry | Data (vtable slot) |
-| `0x146cfb42c` | Runtime structure | Data |
-| `0x146cfb438` | Runtime structure | Data |
-
-No direct `call` instructions target this function — confirming it's purely a virtual dispatch target.
+The engine is NOT called directly from code — it's called **only via vtable dispatch** from the RB tree walk. vtable[5] (`0x140AB0100`) has zero direct `call` instruction cross-references — confirming it's purely a virtual dispatch target.
 
 ### Lua Global Function Registration Table
 
@@ -311,7 +366,7 @@ classDiagram
         +UpdateScene()
     }
     class AnarkLuaEngine {
-        vtable: 0x142b47f88
+        vtable: 0x142B55BC0
         +DispatchEvents()
         +FireLuaCallback()
     }
@@ -353,68 +408,116 @@ classDiagram
 
 ## 6. Event System — Typed C++ Events
 
-Game state changes are communicated via typed event objects posted to an event bus.
+Game state changes are communicated via typed event objects posted to a global event queue.
 
-### Event Posting
+> **Verified 2026-03-28.** The event queue is protected by a CriticalSection and supports
+> multi-threaded posting.
+
+### Event Queue Structure
+
+The global event queue is a **doubly-linked list** of 64-byte nodes, protected by a
+Win32 CriticalSection. It is NOT a simple array.
+
+| Global | Address | Purpose |
+|--------|---------|---------|
+| `g_EventQueue_CriticalSection` | `0x1439137E8` | Win32 CRITICAL_SECTION protecting queue |
+| `g_EventQueue_Head` | `0x14391D488` | Head of doubly-linked list |
+| `g_EventQueue_HasPending` | `0x14391D498` | Atomic flag: 1=pending, 0=empty (fast-path) |
+
+Each 64-byte queue node carries: operation type (subscribe/unsubscribe/timed_event/cancel),
+source component ID, event object pointer, event type ID, and timestamp.
+
+### Event Posting (CriticalSection-Protected)
+
+All 50 posting sites follow the same pattern:
 
 ```c
-// sub_140953650 — post_event
-void post_event(EventBus* bus, Event* event) {
-    // NO LOCKING — single-producer (main thread)
-    bus->queue[bus->count++] = event;
+// EventQueue_PostTimedEvent_Locked @ 0x140956E80 (50+ callers)
+void post_timed_event(EventSource* source, Event* event, double time) {
+    // ... validate EventSource state with InterlockedCompareExchange ...
+    EnterCriticalSection(&g_EventQueue_CriticalSection);
+    InterlockedExchange(&g_EventQueue_HasPending, 1);
+    Node* node = EventQueue_AllocNode(&g_EventQueue_Head);  // 0x140954B90
+    node->type = TIMED_EVENT;  // type 3
+    node->source_id = source->id;
+    node->event = event;
+    node->timestamp = time;
+    LeaveCriticalSection(&g_EventQueue_CriticalSection);
 }
 ```
+
+**Multi-threaded posting is confirmed:** Collision/physics worker threads
+(`CollisionWorker_PostEvents_Locked` at `0x140E5C5E0`) post events from a thread pool,
+dispatched by `SceneGraph_ProcessCollisions_ThreadPooled` at `0x140E5BE40`.
+
+### Key Posting Functions
+
+| Function | Address | Callers | Purpose |
+|----------|---------|---------|---------|
+| `EventQueue_PostTimedEvent_Locked` | `0x140956E80` | 50+ | Primary single-event poster |
+| `EventQueue_PostBatch_Locked` | `0x140957280` | 3 | Batch-post: splices local list into global queue |
+| `EventQueue_PostCancelEvent_Locked` | `0x1409571F0` | 9 | Posts cancel/remove-listener event |
+| `EventQueue_DrainAndProcess_Locked` | `0x140957340` | internal | Drain under lock, process lock-free |
+| `EventSource_DispatchEvent` | `0x140956B50` | 595 | Dispatch entry: calls drain, then RB-tree insert |
+| `EventSource_DispatchToListeners` | `0x140958BD0` | internal | Delivers event to registered callbacks |
+| `EventBuilder_SwitchDispatch` | `0x140959210` | 8 | Factory: constructs typed events and dispatches |
 
 ### Known Event Types (from RTTI)
 
 | Event Class | Size | Description |
 |-------------|------|-------------|
 | `U::MoneyUpdatedEvent` | 48 bytes | Player money changed |
-| `U::UpdateTradeOffersEvent` | — | Trade offers recalculated |
-| `U::UpdateBuildEvent` | — | Construction state changed |
-| `U::UpdateZoneEvent` | — | Zone ownership/state changed |
-| `U::UnitDestroyedEvent` | — | Entity destroyed |
-| `U::UniverseGeneratedEvent` | — | Universe generation complete |
+| `U::UpdateTradeOffersEvent` | -- | Trade offers recalculated |
+| `U::UpdateBuildEvent` | -- | Construction state changed |
+| `U::UpdateZoneEvent` | -- | Zone ownership/state changed |
+| `U::UnitDestroyedEvent` | -- | Entity destroyed |
+| `U::UniverseGeneratedEvent` | -- | Universe generation complete |
 
 ### Event Lifecycle
 
 ```mermaid
 sequenceDiagram
-    participant CODE as Game Code / Extension
-    participant MEM as Game Memory
-    participant ALLOC as Pool Allocator
-    participant BUS as Event Bus
-    participant SU as UpdateSubsystems
-    participant SUB as Subsystem Handlers
+    participant CODE as Game Code / Worker Thread
+    participant CS as CriticalSection
+    participant QUEUE as Event Queue (linked list)
+    participant DRAIN as DrainAndProcess
+    participant TREE as Per-Source RB Tree
+    participant SUB as Listener Callbacks
 
     rect rgb(160, 189, 216)
-    Note over CODE,BUS: Frame N
-    CODE->>MEM: Modify state directly
-    CODE->>ALLOC: Allocate event (e.g. 48 bytes)
-    ALLOC-->>CODE: Event object
-    CODE->>CODE: Set vtable (U::MoneyUpdatedEvent)
-    CODE->>CODE: Fill payload fields
-    CODE->>BUS: post_event() — NO LOCK
+    Note over CODE,QUEUE: Frame N (any thread)
+    CODE->>CS: EnterCriticalSection
+    CS-->>CODE: Lock acquired
+    CODE->>QUEUE: Alloc 64-byte node, link into list
+    CODE->>CS: LeaveCriticalSection
     end
 
     rect rgb(138, 185, 120)
-    Note over SU,SUB: Frame N+1
-    SU->>BUS: Drain event queue
-    BUS->>SUB: Dispatch to handlers
+    Note over DRAIN,SUB: Frame N or N+1 (main thread only)
+    DRAIN->>CS: EnterCriticalSection
+    DRAIN->>QUEUE: Detach entire queue (swap head)
+    DRAIN->>CS: LeaveCriticalSection
+    DRAIN->>DRAIN: Process detached list (no lock held)
+    DRAIN->>TREE: Insert timed events into RB tree
+    TREE->>SUB: Dispatch to registered listeners
     Note over SUB: UI reacts<br/>MD cues trigger<br/>AI adapts
     end
 ```
+
+**Threading rule:** Posting is multi-producer (any thread). Draining and dispatch are
+main-thread-only. The drain-and-process pattern minimizes lock hold time by detaching
+the queue atomically and processing the detached list without holding the lock.
 
 ---
 
 ## 7. Suspended-Mode Subsystems
 
-When `isSuspended == true`, the BST walk is skipped. Instead, a flat array of 17 subsystems is iterated:
+When `isSuspended == true`, the RB tree walk is skipped. Instead, a flat array of 17 subsystems is iterated:
 
 ```mermaid
 graph LR
     subgraph "Normal Frame"
-        BST["BST Walk\n<i>all subsystems</i>\n<i>full simulation</i>"]
+        RBT["RB Tree Walk\n<i>all subsystems</i>\n<i>full simulation</i>"]
     end
 
     subgraph "Suspended Frame"
@@ -425,10 +528,10 @@ graph LR
         ARR --> INP["Input polling\n<i>detect Alt-Tab</i>"]
     end
 
-    FT{"isSuspended?"} -->|false| BST
+    FT{"isSuspended?"} -->|false| RBT
     FT -->|true| ARR
 
-    style BST fill:#6b3a8a,color:#fff
+    style RBT fill:#6b3a8a,color:#fff
     style ARR fill:#4a4a4a,color:#fff
     style FT fill:#8b6914,color:#fff
 ```
@@ -455,25 +558,37 @@ Entity lookup uses a global component registry at RVA `0x06C7A148`. O(1) page-ba
 
 ## 9. Function Reference
 
-| Name | Address | RVA | Purpose |
-|------|---------|-----|---------|
-| UpdateSubsystems | `0x140E999D0` | `0xE999D0` | BST walk — entire game simulation |
-| AnarkLuaEngine dispatch | `0x140AAC430` | `0xAAC430` | Vtable[5] — Lua event dispatch |
-| UI Event Dispatcher | `0x141342720` | `0x1342720` | Fires onUpdate etc. |
-| Fire Lua Callback | `0x141344A70` | `0x1344A70` | lua_getfield + lua_pcall |
-| Event bus post | `0x140953650` | `0x953650` | Post event (no lock) |
-| sub_1409A4830 | `0x1409A4830` | `0x9A4830` | NewGame world init (called by U::NewGameAction) |
-| GameStartDB::Import | `0x1409D39B0` | `0x9D39B0` | Parses gamestart XML, reads `nosave` tag from `tags` attribute |
-| sub_14088D4B0 | `0x14088D4B0` | `0x88D4B0` | Galaxy creation from gamestart XML |
-| BST root | `0x143139400` | — | Subsystem tree root pointer |
-| BST sentinel | `0x1431393E0` | — | Subsystem tree end node |
-| Suspended array | `0x146C6B9A0 + 136` | — | 17 keep-alive subsystems |
-| Component system | `0x146C6B940` | — | Entity lookup table |
-| IsNewGame sentinel | `0x143C97650` | — | Global: 0 = new game, non-zero = save ID |
-| U::NewGameAction RTTI | `0x1431c50b8` | — | RTTI for the new-game action object |
-| nosave string | `0x142b37f68` | — | Literal "nosave" parsed by GameStartDB::Import |
-| Entity_AttachToParent | `0x140397C50` | `0x397C50` | Core hierarchy reparent (26 callers, NOT exported) |
-| ClassName_StringToID | `0x1402D4130` | `0x2D4130` | Maps class name string to numeric ID; BST at `0x1438D2568` |
+| Name | Address | Purpose |
+|------|---------|---------|
+| **Subsystem Tree** | | |
+| UpdateSubsystems_RBTreeWalk | `0x140EA06E0` | RB tree in-order walk — entire game simulation |
+| SubsysRBTree_Insert | `0x140EE06A0` | Insert subsystem into RB tree |
+| SubsysRBTree_AllocNode | `0x140EE0C10` | 48-byte node pool allocator |
+| CacheSwapListener_ctor | `0x140EA0540` | First subsystem registered |
+| CacheSwapListener_dtor | `0x140EA0600` | Remove + RB tree rebalance |
+| RBTree_InsertFixup | `0x1400B2EA0` | Universal RB insert rebalance (690 callers) |
+| RBTree_DeleteFixup | `0x1400B28B0` | Universal RB delete rebalance (241 callers) |
+| g_SubsysTree_Sentinel | `0x143148340` | RB tree sentinel node |
+| g_SubsysTree_Root | `0x143148348` | RB tree root pointer |
+| g_SubsysTree_Leftmost | `0x143148360` | RB tree leftmost (iteration start) |
+| g_SubsysTree_Count | `0x143148368` | RB tree node count |
+| **Lua Engine** | | |
+| AnarkLuaEngine vtable | `0x142B55BC0` | RTTI-confirmed vtable |
+| AnarkLuaEngine dispatch | `0x140AB0100` | Vtable[5] — Lua event dispatch |
+| **Events & Init** | | |
+| Event bus post | `0x140953650` | Post event (no lock) |
+| sub_1409A4830 | `0x1409A4830` | NewGame world init (called by U::NewGameAction) |
+| GameStartDB::Import | `0x1409D39B0` | Parses gamestart XML, reads `nosave` tag from `tags` attribute |
+| sub_14088D4B0 | `0x14088D4B0` | Galaxy creation from gamestart XML |
+| Suspended array | `0x146C6B9A0 + 136` | 17 keep-alive subsystems |
+| Component system | `0x146C6B940` | Entity lookup table |
+| IsNewGame sentinel | `0x143C97650` | Global: 0 = new game, non-zero = save ID |
+| U::NewGameAction RTTI | `0x1431c50b8` | RTTI for the new-game action object |
+| nosave string | `0x142b37f68` | Literal "nosave" parsed by GameStartDB::Import |
+| Entity_AttachToParent | `0x140397C50` | Core hierarchy reparent (26 callers, NOT exported) |
+| **Class System** | | |
+| ClassNameStringToID | `0x1402D51D0` | Maps class name string to numeric ID; sorted array + binary search at `0x1438D95F0` |
+| RBTree_FlattenInOrder | `0x1402D7910` | RB tree → flat sorted array |
 
 ---
 
@@ -574,7 +689,7 @@ Note: takes the sector **macro name** string, not a `UniverseID`. Sector macro n
 
 > **Full documentation moved to:** [COMPONENT_SYSTEM.md](COMPONENT_SYSTEM.md)
 > - §2: X4Component base struct (11 confirmed fields + vtable slots)
-> - §3: Child container internals (bucketed hash map)
+> - §3: Child container internals (group-indexed partition array — NOT a hash map)
 > - §5: Component registry (UniverseID decomposition)
 > - §6-7: Entity hierarchy, class ID table (119 entries)
 > - §8: Player slot layout + key functions
@@ -612,8 +727,9 @@ Offset  Size  Type              Field              Source Functions
 +0x70   8     X4Component*      parent             GetParentComponent, GetContextByClass,
                                                    Component_ComputeWorldTransform (parent chain walk)
 +0x78   48    ?                 (unresolved)       +0x78..+0xA7
-+0xA8   ?     ChildContainer    children           GetClusters_Lua, GetSectors_Lua, GetStationModules
-                                                   Bucketed hash map (32-byte buckets, see §10.1.3)
++0xA8   8     void*             children_ptr       GetClusters_Lua, GetSectors_Lua, GetStationModules
+                                (ChildContainer*)                     POINTER to group-indexed partition array (32-byte
+                                                                     buckets, see §10.1.3). NOT a hash map.
 +0xD1   1     uint8_t           exists             GetSectors_Lua: cmp byte ptr [rax+0D1h], 0
                                                    0=destroyed, nonzero=alive
 +0x3C0  8     int64_t           combined_seed      raw_seed + session_seed (= MD $Station.seed)
@@ -657,33 +773,34 @@ The main vtable at +0x00 has ~800+ entries. Key slots (byte offsets into vtable)
 
 #### 10.1.3 Child Container (+0xA8)
 
-The child container is a **bucketed hash map**, NOT a simple vector or linked list. Internal layout:
+> **Corrected 2026-03-28.** Previously described as "bucketed hash map" — this was wrong. No hash function exists. The structure is a group-indexed partition array. Canonical source: [COMPONENT_SYSTEM.md](COMPONENT_SYSTEM.md) §3.
+
+The child container is a **group-indexed partition array** — a fixed-size array of vectors, one per entity group. `component+0xA8` stores a POINTER to the container object.
 
 ```
-container + 0x00: bucket_array_begin  (pointer to array of 32-byte buckets)
-container + 0x08: bucket_array_end
-container + 0x10: ?
-container + 0x18: count
+Container object (pointed to by component+0xA8):
+  +0x00: ???                 (not accessed by enumerator)
+  +0x08: bucket_array_begin  (pointer to array of 32-byte buckets)
+  +0x10: bucket_array_end
+  +0x20: total_child_count   (DWORD)
 
 Each bucket (32 bytes):
-  +0x00: child_ptr_begin  (pointer to array of X4Component*)
+  +0x00: child_ptr_begin     (pointer to X4Component*[])
   +0x08: child_ptr_end
-  +0x10: ?
-  +0x18: count
+  +0x10: capacity_end        (std::vector-style)
+  +0x18: count               (DWORD)
 ```
 
-Children are filtered by class bitmask: `1 << *(DWORD*)(child + 0x68)`. The enumerator checks each bucket's children against the bitmask.
+Bucket lookup is direct array indexing: `base + (group_index - 1) * 32`. No hash function. Multiple class IDs share the same group bucket (e.g., clusters and sectors both live in group 2). Callers apply vtable post-filters to select exact classes.
 
-**Do NOT walk manually.** Use `ChildComponent_Enumerate` (`0x1402F9B80`, 61 callers) or the safe FFI approach (`GetSectorsByOwner` per faction).
-
-Key internal functions:
+**Do NOT walk manually.** Group assignment is opaque. Use `ChildComponent_Enumerate` (`0x1402F9B80`, 61 callers) or the safe FFI approach.
 
 | Function | Address | Purpose |
 |----------|---------|---------|
-| `ChildComponent_Enumerate` | `0x1402F9B80` | Iterate children with class bitmask filter |
+| `ChildComponent_Enumerate` | `0x1402F9B80` | Iterate children by group index with optional filters |
 | `ChildComponent_Iterator_Init` | `0x1402FF740` | Initialize bucket iterator |
 | `ChildComponent_Iterator_Next` | `0x1402F9AA0` | Advance to next matching child |
-| `ChildComponent_GetBucketCount` | `0x1402E5120` | Read bucket count from container |
+| `ChildComponent_GetBucketCount` | `0x1402E5120` | Read child count (total or per-bucket) |
 
 #### 10.1.4 ComponentID Decomposition
 
@@ -717,16 +834,46 @@ the binary string table.
 
 ### 12.2 Runtime Layout
 
-**Global**: `0x146C6BB88` — pointer to `FactionManager` object.
+**Global**: `0x146C7A398` — pointer to `FactionManager` object (20+ xrefs confirmed).
 
-**Faction lookup** — `std::map<FNV1a_hash, FactionData>` BST:
-- `FactionManager + 16` — BST sentinel node (begin/end marker)
-- `FactionManager + 24` — BST root node pointer (`nullptr` if empty)
-- Hash key: FNV-1a 32-bit hash of faction ID string (seed `2166136261`, multiplier `16777619`)
-- Tree walk: `if (node[4] < hash) → right child (node[2])`, else `left = node[1]`
-- Faction data: at `tree_node + 48` (FactionData is inline in the map node)
+> **Address correction (2026-03-28):** Previous doc claimed `0x146C6BB88`. Verified via xrefs from `IsOwnedByFaction`, `CreateBlacklist`, `GenerateFactionRelationText`, etc.
 
-**`FactionData` struct** (offsets from `tree_node + 48`):
+**Faction lookup** — Egosoft custom red-black tree (NOT `std::map`):
+- `FactionManager + 16` — RB tree sentinel node (begin/end marker)
+- `FactionManager + 24` — RB tree root node pointer (`nullptr` if empty)
+- Hash key: **FNV-1** 32-bit hash of faction ID string (seed `0x811C9DC5` / `2166136261`, multiplier `0x01000193` / `16777619`)
+- Tree walk: `if (node->key < hash) → right child (node+0x10)`, else `left (node+0x08)`
+- Faction data: at `tree_node + 0x30` (FactionData is inline in the tree node)
+
+> **FNV-1, not FNV-1a (confirmed 2026-03-28).** Verified at 5 independent call sites via raw disassembly: `imul r9, 1000193h` (multiply) THEN `xor r9, rcx` (XOR). FNV-1a would XOR first, then multiply. Same constants, different algorithm, different output. Non-standard variant — 32-bit offset basis (`0x811C9DC5`) in a 64-bit register. Our SDK's `x4n::math::fnv1a_lower()` is **misnamed but correct** — C operator precedence in `c ^ (prime * hash)` evaluates multiplication first, producing FNV-1. Function should be renamed to `fnv1_lower`.
+
+```mermaid
+graph TD
+    FM["FactionManager\n<code>0x146C7A398</code>"] --> SENT["Sentinel (+16)\n<i>nil marker</i>"]
+    FM --> ROOT["Root (+24)"]
+    ROOT --> L["Left subtree\nsmaller hashes"]
+    ROOT --> R["Right subtree\nlarger hashes"]
+    L --> FD1["Node: FNV hash at +0x20\nFactionData at +0x30"]
+    R --> FD2["Node: FNV hash at +0x20\nFactionData at +0x30"]
+
+    style FM fill:#6b3a8a,color:#fff
+    style SENT fill:#aabbcc,color:#000,stroke-dasharray: 10 10
+    style FD1 fill:#2d5a27,color:#fff
+    style FD2 fill:#2d5a27,color:#fff
+```
+
+**RB tree node layout** for faction lookup (same `EgoRBTreeNode` base, see §2):
+
+| Offset | Field | Evidence |
+|--------|-------|---------|
+| +0x00 | Parent | Walk-up in `RBTree_FlattenInOrder` |
+| +0x08 | Left child | `mov rax, [rax+8]` in search path |
+| +0x10 | Right child | `mov rax, [rax+10h]` in search path |
+| +0x18 | Color/pad | Sentinel init: `*(WORD*)(node+24) = 257` |
+| +0x20 | Key (FNV hash) | `cmp [rax+20h], r9` in `GetFactionDetails` |
+| +0x30 | FactionData (inline) | `lea r14, [rcx+30h]` in `GetFactionDetails` |
+
+**`FactionData` struct** (offsets from `tree_node + 0x30`):
 ```
 +0    vtable*                 virtual: isHidden() at slot 13 (vtable+104)
 +16   faction_id std::string  SSO: inline buffer if size < 16; heap ptr at +16 if size >= 16
@@ -734,8 +881,7 @@ the binary string table.
 +640  sub-object*             localization/name data; display name string at sub+1304
 ```
 
-**Iteration** (`GetAllFactions`, `GetNumAllFactions`): calls `sub_1402D5CF0(FactionManager, &range)`
-which builds an ordered range from the BST for in-order traversal.
+**Iteration** (`GetAllFactions`, `GetNumAllFactions`): calls `RBTree_FlattenInOrder` (`0x1402D7910`) which builds an ordered flat array from the RB tree for sequential traversal.
 
 ### 12.3 Galaxy Entity Arrays (Faction-Indexed)
 
@@ -785,7 +931,7 @@ faction list, ignored by AI/economy/diplomacy until activated.
 
 To inject a faction not present in any loaded XML at runtime:
 
-1. BST insert: allocate `FactionData` + insert node — mechanically possible but risky
+1. RB tree insert: allocate `FactionData` + insert node — mechanically possible but risky
 2. **Numeric faction index**: must be `N+1` where N = number of XML-loaded factions.
    The galaxy entity array was sized for N at load time; index N+1 exceeds bounds in
    every pre-allocated faction-indexed table. No resize path exists.
@@ -797,7 +943,7 @@ then activate via the MD action path in §12.4.
 ### 12.6 Extension Pattern: Pre-Defined Inactive Slots
 
 Define placeholder factions in an `extension/libraries/factions.xml` diff patch. They
-are fully registered at game start (numeric index allocated, BST node inserted) but
+are fully registered at game start (numeric index allocated, RB tree node inserted) but
 invisible to AI/economy until activated via §12.4.
 
 ```xml
@@ -835,7 +981,7 @@ keys use `'{pageid,textid}'`, and cue-local variables use `$varname`. Dynamic ru
 
 ### 12.7 Sector Ownership Recalculation (Engine-Automatic)
 
-> **Date:** 2026-03-27 | **Source:** IDA + `factionlogic.xml` analysis
+> **Date:** 2026-03-27 | **Source:** Decompilation + `factionlogic.xml` analysis
 
 Sector ownership in X4 is **engine-computed**, not manually set. The game automatically recalculates which faction owns a sector based on **which faction has the most `canclaimownership` stations** in that sector.
 
@@ -876,14 +1022,14 @@ Signal from C++ via `x4n::raise_lua("MyExt_ActivateFaction_signal", ...)` or fro
 
 | Address | Symbol | Notes |
 |---------|--------|-------|
-| `0x146C6BB88` | `g_faction_manager` | FactionManager global pointer |
+| `0x146C7A398` | `g_faction_manager` | FactionManager global pointer (corrected from `0x146C6BB88`) |
 | `0x143C97858` | `g_galaxy_ptr` | Galaxy object indirect pointer (`+552` = galaxy) |
-| `0x1401_4D0D0` | `GetAllFactions` | Iterates BST via `sub_1402D5CF0` |
+| `0x140AB4DC0` | `GetFactionDetails` | FNV hash RB tree lookup; returns name/icon strings (corrected from `0x140AB10F0`) |
+| `0x1402D7910` | `RBTree_FlattenInOrder` | Builds ordered flat array from RB tree (corrected from `0x1402D5CF0`) |
+| `0x1401_4D0D0` | `GetAllFactions` | Iterates via `RBTree_FlattenInOrder` |
 | `0x1401_5E9F0` | `GetNumAllFactions` | Same iteration, count only |
 | `0x1401_4D1D0` | `GetAllFactionShips` | Uses `FactionData+560` numeric index |
-| `0x140AB10F0` | `GetFactionDetails` | FNV hash BST lookup; returns name/icon strings |
 | `0x140154EE0` | `GetFactionRepresentative` | Looks up faction agent in galaxy |
-| `0x1402D5CF0` | `sub_FactionBSTIter` | Builds ordered range from BST |
 | `0x14045DC90` | `sub_FactionShipIterInit` | Iterator init; bounds-checks numeric index (safe) |
 | `0x140B91D80` | `SetFactionIdentityAction::Execute` | Patches name/shortname/icon strings at runtime |
 | `0x140B92AB0` | `SetFactionActiveAction::Execute` | Toggles active bool; calls `sub_140996B00`; fires events |
@@ -905,9 +1051,13 @@ X4's entity component system uses a virtual function at two vtable offsets for h
 | `+4528` (index 566) | Lookup on registered entity (from ID registry) | Exact / self-class check |
 | `+4536` (index 567) | Walk on physics sub-object `entity[+112]` | Parent-chain class check |
 
-Both return `bool` (non-zero = is member of that class). The class system uses numeric IDs resolved from string names via a sorted BST table.
+Both return `bool` (non-zero = is member of that class). The class system uses numeric IDs resolved from string names via a **sorted array with binary search**.
 
-**`ClassName_StringToID`** at `0x1402D4130` — maps class name strings to numeric IDs at runtime. Lookup table at `0x1438D2568` (BSS, populated at startup). Returns 119 (sentinel) when the input string is not found.
+**`ClassNameStringToID`** at `0x1402D51D0` — maps class name strings to numeric IDs at runtime. Uses a sorted array at `0x1438D95F0` (BSS, populated at startup) with 24-byte elements `{char* string_ptr, uint64_t length, uint32_t class_id}`. Lookup is classic binary search (`memcmp` comparison, halving search space). Returns 119 (sentinel) when the input string is not found.
+
+> **Address correction (2026-03-28):** Previous doc claimed `0x1402D4130` with a "BST" at `0x1438D2568`. The claimed address is mid-function in a notification category init routine. The real function was found by tracing from the `IsComponentClass` Lua handler. The data structure is a sorted array, not a tree — though an RB tree may exist for the registration/insertion path, the runtime lookup uses binary search on the flattened array.
+
+> **Note:** A parallel RB tree may also exist for this data (used during class registration at startup, then flattened). The runtime lookup path confirmed via decompilation uses the sorted array.
 
 ### 13.1b Entity Hierarchy and Scene Graph
 
@@ -935,7 +1085,7 @@ Galaxy
 Source: `GetComponentClassMatrix()` runtime dump via `x4native_class_dump` example extension.
 IDs confirmed against decompile constants (previously known IDs all match).
 
-**Note on ID 119:** Not a registered class. `sub_1402D4130` (the class name→ID BST resolver) returns 119 as an out-of-range sentinel when the input string is not found. Do not pass 119 to any class-check function.
+**Note on ID 119:** Not a registered class. `ClassNameStringToID` (`0x1402D51D0`) returns 119 as an out-of-range sentinel when the input string is not found. Do not pass 119 to any class-check function.
 
 **Registration order note:** IDs 0–107 are concrete/leaf classes registered in the first pass. IDs 108–118 are abstract hierarchy classes (the ones most commonly used with `GetContextByClass`) registered in a second pass.
 
@@ -1062,7 +1212,7 @@ Classes used in our code or findings are **bold**.
 | 116 | `space` | Abstract: space containers |
 | 117 | `triggerobject` | Abstract: trigger volumes |
 | 118 | `walkablemodule` | Abstract: station modules with walkable interiors |
-| _(119)_ | _(sentinel)_ | Not registered — returned by BST resolver when class name not found |
+| _(119)_ | _(sentinel)_ | Not registered — returned by `ClassNameStringToID` when class name not found |
 
 ### 13.3 Player Slot Layout
 

@@ -1,8 +1,6 @@
 # X4 State Mutation Safety — Reverse Engineering Notes
 
-> **Binary:** X4.exe v9.00 (build 900) · **Date:** 2026-03
->
-> All addresses are absolute (imagebase `0x140000000`). Subtract imagebase to get RVA.
+> **Binary:** X4.exe v9.00 · **Date:** 2026-03
 
 ---
 
@@ -443,7 +441,7 @@ The refcount design means multiple callers can independently pause the game; the
 
 ### Key Functions
 
-| Name (IDA) | Address | RVA | Signature | Role |
+| Name (RE) | Address | RVA | Signature | Role |
 |------------|---------|-----|-----------|------|
 | `IsGamePaused` | `0x140178A50` | `0x178A50` | `bool ()` | **Exported PE thunk** — callable via `x4n::game()->IsGamePaused()` |
 | `TimerBase_IsGamePaused` | `0x14145A020` | `0x145A020` | `bool ()` | Internal implementation — reads refcount under lock |
@@ -599,17 +597,17 @@ Player docked at station. Transitions: pilot seat → ship interior (elevator) �
 | `GetPlayerControlledShipID()` | ship_id (93546) | 0 | 0 | Same as occupied for pilot seat |
 | `GetPlayerShipID()` | ship_id (93546) | ship_id (93546) | 0 | Non-zero when inside own ship (even on-foot), 0 on station |
 | `GetPlayerContainerID()` | ship_id (93546) | ship_id (93546) | station_id (94053) | Always the containing entity |
-| `GetPlayerObjectID()` | ship_id (93546) | ship_id (93546) | station_id (94053) | **Returns container, NOT avatar** (IDA analysis was wrong) |
-| `GetEnvironmentObject()` | 0 | 0 | 0 | **Always 0** — contradicts IDA analysis (expected room ID) |
+| `GetPlayerObjectID()` | ship_id (93546) | ship_id (93546) | station_id (94053) | **Returns container, NOT avatar** (static analysis was wrong) |
+| `GetEnvironmentObject()` | 0 | 0 | 0 | **Always 0** — contradicts static analysis (expected room ID) |
 | `GetPlayerID()` | 93553 | 93553 | 93553 | Unique stable entity across all states |
 | `IsPlayerOccupiedShipDocked()` | true (1) | false (0) | false (0) | Only true when piloting a docked ship |
 | `GetPlayerZoneID()` | 93474 | 93474 | 93474 | Stable zone ID across all on-foot states and pilot seat |
 
 ### Key Findings
 
-1. **`GetPlayerObjectID()` ≠ avatar.** Despite IDA showing a class-71 parent walk, at runtime it returns the same value as `GetPlayerContainerID()`. The "avatar entity" does not appear as a distinct game object accessible via these APIs.
+1. **`GetPlayerObjectID()` ≠ avatar.** Despite decompilation showing a class-71 parent walk, at runtime it returns the same value as `GetPlayerContainerID()`. The "avatar entity" does not appear as a distinct game object accessible via these APIs.
 
-2. **`GetEnvironmentObject()` = 0 always.** IDA shows it reads `player->data[+29496]`. Either this field is never populated in normal gameplay, or it requires conditions not met in testing (e.g., specific room types, or the player must have entered via a specific path). Needs further investigation.
+2. **`GetEnvironmentObject()` = 0 always.** Decompilation shows it reads `player->data[+29496]`. Either this field is never populated in normal gameplay, or it requires conditions not met in testing (e.g., specific room types, or the player must have entered via a specific path). Needs further investigation.
 
 3. **On-foot detection formula:** `GetPlayerOccupiedShipID() == 0 && GetPlayerContainerID() != 0`. Reliable across ship interior and station on-foot states.
 
@@ -753,7 +751,7 @@ Every entity has a parent pointer at object offset 14 (byte offset `0x70`). Posi
 **`Entity_AttachToParent`** at `0x140397C50` is the core reparenting function. It is NOT exported — internal to the engine, called from MD action handlers (26 callers).
 
 ```cpp
-// Reconstructed signature (from IDA decompilation):
+// Reconstructed signature (from decompilation):
 // char Entity_AttachToParent(entity*, ?, connection, parent*, slot, transform)
 // Steps:
 //   1. Check attachability via vtable+4960
