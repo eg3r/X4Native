@@ -80,10 +80,14 @@ inline void rebuild_cache() {
             cache_sector(static_cast<uint64_t>(sector_buf[si]));
     }
 
-    // Unowned sectors.
-    uint32_t ns = g->GetSectorsByOwner(sector_buf, MAX_SECTORS, "ownerless");
-    for (uint32_t si = 0; si < ns; ++si)
-        cache_sector(static_cast<uint64_t>(sector_buf[si]));
+    // Also try player-owned, ownerless, and empty-string sectors.
+    // Client NewGame may have sectors with no faction owner at all.
+    const char* extra_owners[] = { "player", "ownerless", "" };
+    for (const char* owner : extra_owners) {
+        uint32_t ns = g->GetSectorsByOwner(sector_buf, MAX_SECTORS, owner);
+        for (uint32_t si = 0; si < ns; ++si)
+            cache_sector(static_cast<uint64_t>(sector_buf[si]));
+    }
 }
 
 // ---------------------------------------------------------------------------

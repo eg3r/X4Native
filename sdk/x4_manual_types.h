@@ -160,6 +160,17 @@ typedef struct X4ComponentRegistry_ X4ComponentRegistry;
                                                    /*          confirmed by GetSectors_Lua: cmp [rax+0D1h],0 */
 #define X4_COMPONENT_OFFSET_COMBINED_SEED  0x3C0  /* int64  — raw_seed + session_seed (= MD $Station.seed) */
 
+// ---- Container class offsets (stations, ships — NOT space suits) ----
+// Container is the base class for entities that hold other entities.
+// Stations and ships inherit these offsets from Container.
+// WARNING: SpaceSuit stores spawntime at a different offset (0xC88).
+// Verified: v9.00 build 900 (Container_GetSpawnTime @ 0x140B19D30,
+//   Container load/save @ 0x1403B1FB0/0x1403B4210, save property 0x44C)
+#define X4_CONTAINER_OFFSET_SPAWNTIME      0x6E0  /* double — game time when created/connected to universe */
+                                                   /*          sentinel -1.0 = not set.                      */
+                                                   /*          MD: $container.spawntime (class index 0x44C)   */
+                                                   /*          MD: $container.age = gametime - spawntime      */
+
 // ---- Component main vtable slot offsets (byte offsets into vtable) ----
 // The main vtable at +0x00 has ~800+ slots. Key slots:
 // Verified: v9.00 build 602526 (multiple function decompilations)

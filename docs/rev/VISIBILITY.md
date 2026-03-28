@@ -4,7 +4,7 @@
 >
 > All addresses are absolute (imagebase `0x140000000`). Subtract imagebase to get RVA.
 >
-> Consolidates findings from IDA decompilation, game script analysis, and runtime testing.
+> Consolidates findings from decompilation, game script analysis, and runtime testing.
 
 ---
 
@@ -56,7 +56,7 @@ X4 uses six independent subsystems to control whether an entity appears on the m
 
 | System | Controls | Storage | Set Via | Read Via |
 |--------|----------|---------|---------|----------|
-| Component known-to | Map `isknown` | Faction ptr array at +864 (obj) / +824 (space) | `SetKnownTo` FFI, MD `<set_known>` | `IsObjectKnown` FFI, `GetComponentData("isknown")` |
+| Component known-to | Map `isknown` | Faction ptr array at +864 (obj) / +824 (space) | `SetKnownTo` FFI, MD `<set_known>` | `IsKnownToPlayer` FFI, `IsObjectKnown` FFI, `GetComponentData("isknown")` |
 | Radar visible | Map `isradarvisible` | Byte at +1024 | MD `set_object_radar_visible`, game engine | `GetComponentData("isradarvisible")` (Lua only) |
 | Forced radar visible | Overrides +1024 | Byte at +1025 | `SetObjectForcedRadarVisible` FFI | No direct reader |
 | Faction discovery | Diplomacy UI | MD-level flag | MD `<set_faction_known>` only | No C FFI reader |
@@ -168,7 +168,7 @@ Diplomacy events can grant gravidar access to the player:
 
 When the player has gravidar access to an NPC object (e.g., via a trade deal or diplomacy), the player can see through that object's gravidar. This is used in `diplomacy.xml` when visiting foreign stations.
 
-### 2.6 `isinliveview` and `cansee` Properties (IDA-Confirmed)
+### 2.6 `isinliveview` and `cansee` Properties (Confirmed)
 
 | Property | Meaning |
 |----------|---------|
@@ -177,7 +177,7 @@ When the player has gravidar access to an NPC object (e.g., via a trade deal or 
 
 `isinliveview` is the high-level "is this entity currently detected by any player asset" check. It is more comprehensive than the simple `isradarvisible` byte because it accounts for gravidar access grants and player-owned assets.
 
-#### IDA-Confirmed Internals (2026-03-26)
+#### Confirmed Internals (2026-03-26)
 
 **Handler:** GetComponentData hash `0x32EDC1D9173B5D59` at `0x14023FDE6`. Requires type 71 (Object).
 Calls `IsInLiveView` @ `0x140695B50`, returns boolean.
@@ -214,7 +214,7 @@ Unlike the `+0x400` byte (which persists forever once set), these two bytes are 
 
 **Implication:** Cannot replicate `isinliveview` by copying a byte. It is a computed property requiring player ownership state, zone proximity, and tracking table lookups. For replication, evaluate on host and transmit the boolean result.
 
-### 2.7 Gravidar C++ Internals (IDA-Confirmed, Build 602526)
+### 2.7 Gravidar C++ Internals (Confirmed, Build 602526)
 
 The gravidar system runs its own tick loop on a **worker thread**, independent of the UI thread. Key functions:
 
@@ -233,7 +233,7 @@ The gravidar system runs its own tick loop on a **worker thread**, independent o
 
 ---
 
-## 3. Radar Scan Pipeline (IDA-Confirmed)
+## 3. Radar Scan Pipeline (Confirmed)
 
 The radar scan is performed by the game engine, not by scripts. The key function pipeline:
 
@@ -311,7 +311,7 @@ The `isradarvisible` byte at component+1024 is written by:
    - Entity creation sets +1024 = 0 (default state)
    - Entity teardown/destruction zeros the entire QWORD at +1024 (vtable method at `0x1407429C0`)
 
-**NOTE (IDA-confirmed, build 602526):** Exhaustive byte-pattern search (all x86-64 register
+**NOTE (confirmed, build 602526):** Exhaustive byte-pattern search (all x86-64 register
 encodings for `mov byte/dword/qword [reg + 0x400]`) found exactly these four write sites:
 
 | Address | Function | Action |
@@ -355,7 +355,7 @@ The forced radar visible byte at component+1025 is written by:
 3. **MD action `set_object_forced_radar_visible`** (handler: `0x140B8BFA0`)
    - Evaluates condition, calls `SetForcedRadarVisible_Internal`
 
-### 3.5 RadarVisibilityChangedEvent Dispatch Analysis (IDA-Confirmed, Build 602526)
+### 3.5 RadarVisibilityChangedEvent Dispatch Analysis (Confirmed, Build 602526)
 
 **Vtable:** `RadarVisibilityChangedEvent` vtable at `0x142B40060`.
 
@@ -639,9 +639,38 @@ The explored flag is stored in **macro defaults** (offset +400 on the macro defa
 
 The `IsExploredCheck` virtual (vtable+6344, `0x1407B2DC0`) reads this flag from macro defaults. Only implemented for Space-class entities (clusters, sectors), not for stations/ships.
 
-### 7.3 `GetClusters` and `GetSectors` Filters
+### 7.3 Space-Class Known-State Virtual Functions (confirmed 2026-03-28)
 
-**Critical behavior (IDA-confirmed):** `GetClusters` (Lua global at `0x140262FC0`) and `GetSectors` (at `0x140263220`) ALWAYS filter by "known to player faction", even when called with `false`. The boolean parameter only controls the ADDITIONAL "explored" filter. Components created by `AddCluster`/`AddSector` are NOT automatically marked as "known" -- that must be done separately.
+All Space subclasses (Sector, Cluster, Galaxy) share the SAME virtual implementations for known-state. Found via RTTI-named vtables.
+
+| Vtable | RTTI Address | Class |
+|--------|-------------|-------|
+| `U::Sector` | `0x142AB3C08` | Sector (class 86) |
+| `U::Cluster` | `0x142A3B568` | Cluster (class 15) |
+| `U::Galaxy` | `0x142AAC298` | Galaxy (class 46) |
+
+| Vtable Offset | Slot | Function | Address | Signature |
+|--------------|------|----------|---------|-----------|
+| +5976 | 747 | `Space__IsObjectKnown` | `0x1407ACB70` | `bool(self)` |
+| +5992 | 749 | `Space__IsKnownToFaction` | `0x1407ACBA0` | `bool(self, Faction*)` |
+| +6016 | 752 | `Space__SetKnownToFaction` | `0x1407ACCA0` | `void(self, Faction*, bool)` |
+| +6344 | 793 | `Space__IsExploredCheck` | `0x1407B4440` | `bool(self, ?)` |
+
+**Space__IsKnownToFaction** (vtable+5992, called by `IsKnownToPlayer` FFI):
+1. Return true if `+818` (known_to_all byte) is set
+2. Return true if `+800` (owner_faction_ptr) == passed faction pointer
+3. Linear scan `+824` known_factions_arr for exact faction pointer match
+
+**Space__IsObjectKnown** (vtable+5976, called by `IsObjectKnown` FFI):
+1. Return true if `+818` (known_to_all byte) is set
+2. Return true if `+800` (owner_faction_ptr) == `g_PlayerFaction`
+3. Return true if `+848` (known_factions_count) > 0
+
+Both functions work correctly for Space-class components. `IsObjectKnown` is more permissive (returns true if ANY faction knows the sector).
+
+### 7.4 `GetClusters` and `GetSectors` Filters
+
+**Critical behavior (confirmed):** `GetClusters` (Lua global at `0x140262FC0`) and `GetSectors` (at `0x140263220`) ALWAYS filter by "known to player faction", even when called with `false`. The boolean parameter only controls the ADDITIONAL "explored" filter. Components created by `AddCluster`/`AddSector` are NOT automatically marked as "known" -- that must be done separately.
 
 ---
 
@@ -719,9 +748,9 @@ When `cap == 2`, the two faction pointers are stored inline at `known_factions_a
 
 | Function | Address | Signature | Notes |
 |----------|---------|-----------|-------|
-| `SetKnownTo` | `0x14017F0D0` | `void(UniverseID, const char* factionid)` | Hashes factionid via FNV-1a, looks up in `g_FactionRegistry`, calls vtable+6016. Use `"player"`. |
-| `IsObjectKnown` | `0x140ABF6E0` | `bool(UniverseID)` | Calls vtable+5976 |
-| `IsKnownToPlayer` | `0x140179D00` | `bool(UniverseID)` | Calls vtable+5992 with `g_PlayerFactionContext` |
+| `SetKnownTo` | `0x14017FFA0` | `void(UniverseID, const char* factionid)` | Hashes factionid via FNV-1a, looks up in `g_FactionRegistry`, calls vtable+6016. Use `"player"`. |
+| `IsObjectKnown` | `0x140AC1820` | `bool(UniverseID)` | Calls vtable+5976. Works for ALL classes including Space (sectors). |
+| `IsKnownToPlayer` | `0x14017ABD0` | `bool(UniverseID)` | Calls vtable+5992 with `g_PlayerFaction` (`0x14387E708`). Works for ALL classes including Space (sectors). |
 | `SetObjectForcedRadarVisible` | `0x14017F5A0` | `void(UniverseID, bool)` | Sets +1025, dispatches event, propagates to children. Type 71 only. |
 | `IsKnownRead` | `0x140179CB0` | `bool(UniverseID)` | Calls vtable+6024 |
 | `SetKnownRead` | `0x14017F080` | `void(UniverseID, bool)` | Calls vtable+6032 |
@@ -743,7 +772,7 @@ When `cap == 2`, the two faction pointers are stored inline at `known_factions_a
 | `IsKnownItem(library, itemid)` | `0x140262D70` | Checks encyclopedia |
 | `GetComponentData(id, ...)` | `0x14023E190` | Master property dispatcher (32KB, FNV-1 hash dispatch) |
 
-### Internal Functions (IDA-Named)
+### Internal Functions (Self-Named)
 
 | Function | Address | Size | Purpose |
 |----------|---------|------|---------|
@@ -872,7 +901,7 @@ The `isradarvisible` handler checks type 71 (object class) first, then casts and
 
 ## 14. Scan State / Reveal Percentage (Third Visibility Layer)
 
-> **Date:** 2026-03-27 | **Source:** IDA + game script analysis
+> **Date:** 2026-03-27 | **Source:** assembler + game script analysis
 
 X4 has **three independent visibility layers** that ALL must be set for full map/UI presentation:
 
@@ -921,7 +950,7 @@ Formula: `percentage = table[scan_level + 4 * secrecy_level]`, capped at 100. Pl
 
 **Stations** cache the aggregate percentage at entity offset +3432 (DWORD). This is the "average revealed percentage of all info points" from scriptproperties.xml. Each station module has its own scan state.
 
-### Key Functions (IDA-confirmed)
+### Key Functions (confirmed)
 
 | Function | Address | Role |
 |----------|---------|------|

@@ -35,7 +35,7 @@ inline X4Component* find_component(uint64_t id) {
 
 /// Read a component's UniverseID from its object pointer.
 /// @stability MODERATE — depends on X4_COMPONENT_OFFSET_ID (+0x08).
-/// @verified v9.00 build 602526 (IDA: GetClusters_Lua, GetSectors_Lua)
+/// @verified v9.00 build 602526 (GetClusters_Lua, GetSectors_Lua)
 inline uint64_t get_component_id(const X4Component* component) {
     if (!component) return 0;
     return component->id;
@@ -48,7 +48,7 @@ inline uint64_t get_component_id(const X4Component* component) {
 /// as long as the component exists. Do NOT store across frames.
 /// @note Assumes MSVC x64 std::string layout (SSO threshold = 16 bytes).
 /// @stability MODERATE — depends on X4_COMPONENT_OFFSET_DEFINITION (+0x30) + vtable[4].
-/// @verified v9.00 build 602526 (IDA: GetComponentData "macro" handler at 0x1402461CC)
+/// @verified v9.00 build 602526 (GetComponentData "macro" handler at 0x1402461CC)
 #ifdef _MSC_VER
 inline const char* get_component_macro(X4Component* component) {
     if (!component || !component->definition.vtable) return nullptr;
@@ -67,5 +67,28 @@ inline const char* get_component_macro(uint64_t id) {
     return get_component_macro(find_component(id));
 }
 #endif
+
+/// Read the spawntime from a Container-class entity (station, ship).
+/// Returns the game time (seconds since game start) when the object was
+/// created or connected to the universe.
+/// Returns -1.0 if the component is null or spawntime is unset.
+/// Only valid for Container-derived entities (stations, ships).
+/// @note SpaceSuit stores this at a different offset (0xC88) — do not use for suits.
+/// @stability LOW — raw struct offset, verify on game updates.
+/// @verified v9.00 build 900 (Container_GetSpawnTime @ 0x140B19D30)
+inline double get_spawntime(uint64_t id) {
+    auto* comp = find_component(id);
+    if (!comp) return -1.0;
+    return *reinterpret_cast<double*>(
+        reinterpret_cast<uintptr_t>(comp) + X4_CONTAINER_OFFSET_SPAWNTIME);
+}
+
+/// Read the spawntime directly from a component pointer.
+/// @see get_spawntime(uint64_t) for details.
+inline double get_spawntime(const X4Component* comp) {
+    if (!comp) return -1.0;
+    return *reinterpret_cast<const double*>(
+        reinterpret_cast<uintptr_t>(comp) + X4_CONTAINER_OFFSET_SPAWNTIME);
+}
 
 }} // namespace x4n::entity
