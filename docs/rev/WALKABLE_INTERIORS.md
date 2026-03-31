@@ -23,7 +23,7 @@ Shared by station and ship interiors. The `WalkableModule` class is the base for
 ```
 Container (station or capital ship)
   +-- WalkableModule (station module or ship module)
-        +-- Room (class 82)
+        +-- Room (class 83)
               +-- Actor entities (NPCs, player avatar)
 ```
 
@@ -31,7 +31,7 @@ Container (station or capital ship)
 
 | Class ID | Name | Notes |
 |----------|------|-------|
-| 82 | Room | Walkable room entity |
+| 83 | Room | Walkable room entity |
 | 109 | Container | Station or ship (docking container) |
 | 118 | WalkableModule | Walkable module within a container |
 
@@ -59,7 +59,7 @@ Station interiors are **dynamic** -- loaded on demand via `create_dynamic_interi
 
 ## 4. Room System
 
-The engine has a full `RoomDB` and `RoomGroupDB` (RTTI confirmed). Rooms are **class 82** entities in the component hierarchy.
+The engine has a full `RoomDB` and `RoomGroupDB` (RTTI confirmed). Rooms are **class 83** entities in the component hierarchy.
 
 ### Room Types
 
@@ -373,7 +373,7 @@ flowchart TD
     I --> J["GameUniverse_CreateRoom<br/>0x140467790"]
     J --> K["Set room type<br/>room+0x2C0 = roomtype"]
     K --> L["Compute transform<br/>4x4 matrix at window connection"]
-    L --> M["Apply transform<br/>vtable+5176 SetTransform"]
+    L --> M["Apply transform<br/>vtable+5184 SetTransform"]
     M --> N["Set properties:<br/>persistent=room+0x409<br/>private=room+0x408<br/>unknown=room+0x3A0"]
     N --> O["Copy name string<br/>to room+0x3A8"]
     O --> P["Return via InteriorOutput"]
@@ -717,7 +717,7 @@ flowchart TD
 | `AddActorToRoom_Controllable_NonNPC` | `0x14051C110` | 0x51C110 | Non-NPC → controllable (player character path) |
 | `AddActorToRoom_DockPosition_NPC` | `0x140686950` | 0x686950 | NPC → dock position placement path |
 | `Entity_AttachToParent` | `0x140397C50` | 0x397C50 | Core hierarchy reparent function (26 callers, NOT exported) |
-| `SetPositionalOffset` | `0x140180550` | 0x180550 | Set entity position relative to parent (class 75 required) |
+| `SetPositionalOffset` | `0x140180550` | 0x180550 | Set entity position relative to parent (class 76 required) |
 
 ---
 
@@ -763,7 +763,7 @@ Find hints:
 
 ## 22. Room Property Offsets
 
-Offsets within a Room entity (class 82) object, as written by `CreateDynamicInterior`:
+Offsets within a Room entity (class 83) object, as written by `CreateDynamicInterior`:
 
 | Offset | Decimal | Type | Property | Written At |
 |--------|---------|------|----------|------------|

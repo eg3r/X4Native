@@ -15,5 +15,4 @@ pkg/
 .claude/**
 
 # Game reference files (large, machine-specific, not for repo)
-reference/game/
-reference/game_600626/
+reference/game*

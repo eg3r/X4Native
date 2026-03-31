@@ -1,6 +1,6 @@
 # X4 Component System — Entity Base Layout, Registry, Class Hierarchy
 
-> **Binary:** X4.exe v9.00 | **Date:** 2026-03-27
+> **Binary:** X4.exe v9.00 | **Date:** 2026-03-27 | **Updated:** 2026-03-31 (build 603098)
 >
 > All addresses are absolute (imagebase `0x140000000`).
 >
@@ -134,7 +134,7 @@ add     rdi, rcx            ; bucket_ptr = base + (group_index - 1) * 32
 - `group_index = 0` → scan ALL buckets (no single-bucket optimization)
 - `group_index = N` → jump directly to `bucket[N-1]`
 
-**Multiple class IDs share the same group.** Evidence: both `GetClusters_Lua` (filters for class 15) and `GetSectors_Lua` (filters for class 86) pass `group_index = 2`. The group is a coarse partition; callers apply vtable-based post-filters (`IsClassID`) to select the exact class.
+**Multiple class IDs share the same group.** Evidence: both `GetClusters_Lua` (filters for class 15) and `GetSectors_Lua` (filters for class 87) pass `group_index = 2`. The group is a coarse partition; callers apply vtable-based post-filters (`IsClassID`) to select the exact class.
 
 Observed group indices across 61 callers: 0 (all), 2 (spatial), 3, 5, 6 (ships/docked), 7-16. At least 16 groups exist.
 
@@ -181,24 +181,24 @@ The main vtable at +0x00 has ~800+ entries. Key slots (byte offsets):
 | Slot | Byte Offset | Function | Confirmed By |
 |------|-------------|----------|-------------|
 | 17 | +136 | `GetClassType() -> uint` | Multiple functions |
-| 565 | +4520 | `GetClassID() -> uint` (119=sentinel) | `GetComponentClass` |
-| 566 | +4528 | `IsClassID(classid) -> bool` | `GetStationModules`, `ChildComponent_Enumerate` |
-| 567 | +4536 | `IsOrDerivedFromClassID(classid) -> bool` | `GetContextByClass`, `IsComponentClass` |
-| 594 | +4752 | `GetIDCode() -> std::string*` | `GetObjectIDCode` |
-| 642 | +5136 | `SetWorldTransform(...)` | `Component_ComputeWorldTransform` |
-| 647 | +5176 | `SetPosition(transform*)` | `SetObjectSectorPos` |
-| 675 | +5400 | `Destroy(reason, flags)` | `RemoveComponent` |
-| 700 | +5600 | `GetFactionID() -> int` | `GetAllFactionStations` |
+| 566 | +4528 | `GetClassID() -> uint` (120=sentinel) | `GetComponentClass` |
+| 567 | +4536 | `IsClassID(classid) -> bool` | `GetStationModules`, `ChildComponent_Enumerate` |
+| 568 | +4544 | `IsOrDerivedFromClassID(classid) -> bool` | `GetContextByClass`, `IsComponentClass` |
+| 595 | +4760 | `GetIDCode() -> std::string*` | `GetObjectIDCode` |
+| 643 | +5144 | `SetWorldTransform(...)` | `Component_ComputeWorldTransform` |
+| 648 | +5184 | `SetPosition(transform*)` | `SetObjectSectorPos` |
+| 676 | +5408 | `Destroy(reason, flags)` | `RemoveComponent` |
+| 701 | +5608 | `GetFactionID() -> int` | `GetAllFactionStations` |
 | 749 | +5992 | `IsKnownTo(faction_ctx) -> bool` | `GetClusters_Lua` known filter |
 
 ---
 
 ## 5. Component Registry
 
-**Global:** `g_ComponentRegistry` at RVA `0x06C7A148`.
+**Global:** `g_ComponentRegistry` at RVA `0x06C866C0`.
 
 ```c
-// ComponentRegistry_Find @ 0x1400CE810
+// ComponentRegistry_Find @ 0x1400CE890
 X4Component* lookup_component(uint64_t id) {
     return ComponentRegistry_Find(g_ComponentRegistry, id, 4);
 }
@@ -222,49 +222,53 @@ Every entity has a parent pointer at +0x70. Position is relative to parent.
 ```
 Galaxy
   +-- Cluster (class 15)
-        +-- Sector (class 86)
-              +-- Zone (class 107) — parent for ships/stations
-                    +-- Station (class 96)
-                          +-- WalkableModule (class 118)
-                                +-- Room (class 82)
-                                      +-- Actor/NPC (class 70/75)
-                    +-- Ship (class 115 abstract, concrete: 88-92)
+        +-- Sector (class 87)
+              +-- Zone (class 108) — parent for ships/stations
+                    +-- Station (class 97)
+                          +-- WalkableModule (class 119)
+                                +-- Room (class 83)
+                                      +-- Actor/NPC (class 71/75)
+                    +-- Ship (class 116 abstract, concrete: 89-94)
 ```
 
 Navigation: `GetContextByClass(entity, "sector", false)` walks the parent chain via +0x70.
 
-**`Entity_AttachToParent`** at `0x140397C50` — core hierarchy reparenting (26 callers, NOT exported). Steps: check attachability (vtable+4960) → set positional offset (vtable+5176) → execute reparent (vtable+4944) → update visibility + attention level.
+**`Entity_AttachToParent`** at `0x140397C50` — core hierarchy reparenting (26 callers, NOT exported). Steps: check attachability (vtable+4960) → set positional offset (vtable+5184) → execute reparent (vtable+4944) → update visibility + attention level.
 
 ---
 
 ## 7. Class ID Table
 
-Source: `GetComponentClassMatrix()` runtime dump. 119 entries.
+Source: `GetComponentClassMatrix()` runtime dump. 120 entries.
 
-**`ClassName_StringToID`** at `0x1402D4130` — maps class name strings to numeric IDs. BST at `0x1438D2568`. Returns 119 (sentinel) for unknown names.
+> **Build 603098 change:** `navcontext` (ID 70) was inserted into the class table, shifting all IDs that were ≥ 70 up by 1. `player` (ID 75, previously unnamed in this table) is now confirmed at that slot after the shift. See full list below.
 
-IDs 0-107: concrete/leaf classes. IDs 108-118: abstract hierarchy classes.
+**`ClassName_StringToID`** at `0x1402D4130` — maps class name strings to numeric IDs. BST at `0x1438D2568`. Returns 120 (sentinel) for unknown names.
+
+IDs 0-108: concrete/leaf classes. IDs 109-119: abstract hierarchy classes.
 
 | ID | Name | Notes |
 |----|------|-------|
 | **15** | **`cluster`** | Galaxy subdivision — parent of sectors |
 | 34 | `defensible` | Has hull/shields. Hull: `sub_14011BBF0`. Shield: `sub_1404E0990`. Read by `GetComponentDetails` @ `0x140AB1E80`. |
-| **70** | **`npc`** | On-foot NPC character |
-| **71** | **`object`** | Base for all placed 3D entities — required by `GetObjectPositionInSector` |
-| 75 | `positional` | Required by `Get/SetPositionalOffset` |
-| **82** | **`room`** | Walkable interior room |
-| 83 | `satellite` | |
-| **86** | **`sector`** | Target of `GetContextByClass("sector")` |
-| 88-92 | `ship_xs/s/m/l/xl` | Concrete ship subclasses |
-| **96** | **`station`** | Station entity |
-| **107** | **`zone`** | Physics zone — walked by `SetObjectSectorPos` |
-| **109** | **`container`** | Abstract: stations and ships containing entities |
-| **110** | **`controllable`** | Abstract: entities accepting orders |
-| **115** | **`ship`** | Abstract ship class |
-| **118** | **`walkablemodule`** | Abstract: modules with walkable interiors |
-| _(119)_ | _(sentinel)_ | Not a class — BST resolver returns this for unknown names |
+| **70** | **`navcontext`** | New in build 603098 — navigation context class |
+| **71** | **`npc`** | On-foot NPC character (was 70 pre-603098) |
+| **72** | **`object`** | Base for all placed 3D entities — required by `GetObjectPositionInSector` (was 71 pre-603098) |
+| **75** | **`player`** | Player entity class |
+| **76** | **`positional`** | Required by `Get/SetPositionalOffset` (was 75 pre-603098) |
+| **83** | **`room`** | Walkable interior room (was 82 pre-603098) |
+| 84 | `satellite` | (was 83 pre-603098) |
+| **87** | **`sector`** | Target of `GetContextByClass("sector")` (was 86 pre-603098) |
+| 89-94 | `ship_xs/s/m/l/xl` | Concrete ship subclasses (were 88-92 pre-603098; xl is now 94) |
+| **97** | **`station`** | Station entity (was 96 pre-603098) |
+| **108** | **`zone`** | Physics zone — walked by `SetObjectSectorPos` (was 107 pre-603098) |
+| **110** | **`container`** | Abstract: stations and ships containing entities (was 109 pre-603098) |
+| **111** | **`controllable`** | Abstract: entities accepting orders (was 110 pre-603098) |
+| **116** | **`ship`** | Abstract ship class (was 115 pre-603098) |
+| **119** | **`walkablemodule`** | Abstract: modules with walkable interiors (was 118 pre-603098) |
+| _(120)_ | _(sentinel)_ | Not a class — BST resolver returns this for unknown names (was 119 pre-603098) |
 
-Key class IDs used in SDK code are defined in `x4_manual_types.h` (`X4_CLASS_*` constants). Full table (all 119 entries) is in SUBSYSTEMS.md §13.2.
+Key class IDs used in SDK code are defined in `x4_manual_types.h` (`X4_CLASS_*` constants). Full table (all 120 entries) is in SUBSYSTEMS.md §13.2.
 
 ---
 
@@ -285,12 +289,12 @@ Per-player data at `qword_143C9FA58 + 560`:
 | Function | Address | Method |
 |----------|---------|--------|
 | `GetPlayerID` | `0x14016b040` | `player_slot[+8]` |
-| `GetPlayerObjectID` | `0x14016b400` | Walks `player_slot[+112]` for class 71 |
-| `GetPlayerContainerID` | `0x14016ae60` | Class 109 (container) |
-| `GetPlayerZoneID` | `0x14016bb40` | Class 107 (zone) |
-| `GetPlayerOccupiedShipID` | `0x140abb7b0` | Class 115 (ship) |
-| `GetObjectPositionInSector` | `0x1401691c0` | Requires class 71; walks +112 for sector |
-| `SetObjectSectorPos` | `0x14017f630` | Requires class 71; walks +112 for zone |
+| `GetPlayerObjectID` | `0x14016b400` | Walks `player_slot[+112]` for class 72 |
+| `GetPlayerContainerID` | `0x14016ae60` | Class 110 (container) |
+| `GetPlayerZoneID` | `0x14016bb40` | Class 108 (zone) |
+| `GetPlayerOccupiedShipID` | `0x140abb7b0` | Class 116 (ship) |
+| `GetObjectPositionInSector` | `0x1401691c0` | Requires class 72; walks +112 for sector |
+| `SetObjectSectorPos` | `0x14017f630` | Requires class 72; walks +112 for zone |
 | `GetContextByClass` | `0x1401519e0` | Generic parent-chain walk |
 
 ### 8.2 On-Foot Detection
@@ -298,7 +302,7 @@ Per-player data at `qword_143C9FA58 + 560`:
 ```cpp
 bool is_on_foot = (g->GetPlayerOccupiedShipID() == 0) &&
                   (g->GetPlayerContainerID() != 0);
-UniverseID avatar = g->GetPlayerObjectID();  // class 71, safe for position read
+UniverseID avatar = g->GetPlayerObjectID();  // class 72, safe for position read
 ```
 
 ---
@@ -315,10 +319,10 @@ UniverseID avatar = g->GetPlayerObjectID();  // class 71, safe for position read
 
 1. Galaxy: `GetPlayerGalaxyID()` (C FFI) → `find_component()` → object pointer
 2. Clusters: walk `galaxy + 0xA8` children, filter class 15
-3. Sectors: walk `cluster + 0xA8` children, filter class 86
+3. Sectors: walk `cluster + 0xA8` children, filter class 87
 4. `GetClusters`/`GetSectors` also apply `isKnownTo` filtering (vtable +5992). Direct walk bypasses this.
 
-**`g_GameUniverse`** at RVA `0x03CA6D68` (build 602526). Safer entry: use `GetPlayerGalaxyID()` C FFI.
+**`g_GameUniverse`** at RVA `0x03CAEE68` (build 603098). Safer entry: use `GetPlayerGalaxyID()` C FFI.
 
 ---
 
@@ -328,5 +332,5 @@ UniverseID avatar = g->GetPlayerObjectID();  // class 71, safe for position read
 
 **Correct approach:** `SpawnObjectAtPos2(macro, sector, pos, owner_faction)`:
 - Works with any character macro from `character_macros.xml`
-- Created entity has class 71 — compatible with `SetObjectSectorPos`
+- Created entity has class 72 — compatible with `SetObjectSectorPos`
 - Registered in component system — visible to all entity queries

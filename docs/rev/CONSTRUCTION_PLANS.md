@@ -65,7 +65,7 @@ U::EditableConstructionPlan (same size, different vtable)
 ```
 
 - Allocate via `x4n::memory::game_alloc<X4PlanEntry>()` (or raw 528 bytes, 16-byte aligned)
-- Initialize via `PlanEntry_Construct(ptr, macro, conn, pred, pred_conn, transform, loadout, fixed, modified, bookmark, id)` at `0x140D0C6B0`
+- Initialize via `PlanEntry_Construct(ptr, macro, conn, pred, pred_conn, transform, loadout, fixed, modified, bookmark, id)` at `0x140D10960`
 - ID counter global: `g_PlanEntryIDCounter` at `0x14387E8E0` (under `g_PlanEntryIDCritSec` at `0x143CF41B0`)
 
 ### Transform Layout (64 bytes at +48)
@@ -161,7 +161,7 @@ ImportMapConstructionPlan(filename, plan_id)            @ 0x14019FC30
     5. Allocate 0x128 (296) bytes for EditableConstructionPlan
     6. ConstructionPlan_Construct_FromXML(plan, 2, xml) @ 0x140D0E760
     7. Set U::EditableConstructionPlan vtable
-    8. ConstructionDB_AddPlan @ 0x140D10F00 -> insert into RB-tree
+    8. ConstructionDB_AddPlan @ 0x140D151B0 -> insert into RB-tree
 ```
 
 ### XML <offset> -> Transform Conversion (@ 0x140E1EDC0)
@@ -250,15 +250,15 @@ Confirmed at three independent call sites:
 | `RemoveConstructionPlan` | `0x1401A0B00` | 0x481 | Deregister + destroy plan |
 | `SpawnStationAtPos` | `0x1401B8530` | 0x88C | Create station from registered plan |
 | `ConstructionDB_ImportLocal` | `0x140D10060` | 0x7E3 | Full XML import: parse + construct + register |
-| `ConstructionDB_AddPlan` | `0x140D10F00` | 0x199 | Insert plan into RB-tree registry |
-| `ConstructionDB_CreatePlanDirect` | `0x140D110A0` | 0xB4 | Alloc + construct + register EditableConstructionPlan |
+| `ConstructionDB_AddPlan` | `0x140D151B0` | 0x199 | Insert plan into RB-tree registry |
+| `ConstructionDB_CreatePlanDirect` | `0x140D15350` | 0xB4 | Alloc + construct + register EditableConstructionPlan |
 | `ConstructionDB_ImportFromXML_Plans` | `0x140D10BB0` | 0x16B | Bulk import plans from XML DOM |
-| `PlanEntry_Construct` | `0x140D0C6B0` | 0xD8 | Initialize 528-byte PlanEntry in-place |
+| `PlanEntry_Construct` | `0x140D10960` | 0xD8 | Initialize 528-byte PlanEntry in-place |
 | `ConstructionPlan_Append` | `0x140D0D050` | 0x778 | Validate + append entry (connection validation) |
 | `ConstructionPlan_Construct_FromXML` | `0x140D0E760` | 0x844 | XML data -> ConstructionPlan object |
 | `Loadout_Init` | `0x1400EF140` | 0x138 | Default-initialize 408-byte loadout block |
 | `Quaternion_ToRotationMatrix` | `0x1400D18C0` | -- | [x,y,z,w] -> 3x3 row-major matrix |
-| `MacroRegistry_Lookup_Inner` | `0x1409E8E20` | 0xB40 | Resolve macro name string to MacroData* |
+| `MacroRegistry_Lookup_Inner` | `0x1409EA820` | 0xB40 | Resolve macro name string to MacroData* |
 | `ComponentFactory_Create` | `0x14089BD70` | 0x292C | Universal entity factory (70 callers, station=case 96) |
 | `GetStationDefaults` | `0x140818EB0` | 0x97 | Resolve station defaults (child conn at +0x7A8) |
 | `GetZoneDefaults` | `0x14081A310` | 0x9A | Resolve zone defaults (parent conn at +0x558) |

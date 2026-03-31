@@ -1,0 +1,6 @@
+{
+    "name": "entity_inspector",
+    "library": "native\\x4native_entity_inspector.dll",
+    "priority": 100,
+    "min_api_version": 1
+}

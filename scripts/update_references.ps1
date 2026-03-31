@@ -185,6 +185,7 @@ if (-not $SkipGameFiles) { $steps += 'game_files' }
 if (-not $SkipExports)   { $steps += 'exports' }
 if (-not $SkipFFI)       { $steps += 'ffi' }
 if (-not $SkipHeaders)   { $steps += 'headers' }
+if (-not $SkipHeaders)   { $steps += 'class_ids' }
 if (-not $SkipVersionDb) { $steps += 'version_db' }
 if (-not $SkipGameData)  { $steps += 'game_data' }
 
@@ -273,7 +274,26 @@ if ($steps -contains 'headers') {
 }
 
 # ---------------------------------------------------------------------------
-# Step 5: Generate version_db metadata
+# Step 5: Generate class ID defines
+# ---------------------------------------------------------------------------
+if ($steps -contains 'class_ids') {
+    $stepNum++
+    Write-Host "[$stepNum/$totalSteps] Generating class ID defines..." -ForegroundColor Cyan
+    Write-Host "------------------------------------------------------------"
+
+    $classArgs = @{}
+    if ($gameVersion) { $classArgs['GameVersion'] = $gameVersion }
+
+    & "$PSScriptRoot\generate_class_ids.ps1" @classArgs
+    if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+        Write-Error "generate_class_ids.ps1 failed"
+        exit 1
+    }
+    Write-Host ""
+}
+
+# ---------------------------------------------------------------------------
+# Step 6: Generate version_db metadata
 # ---------------------------------------------------------------------------
 if ($steps -contains 'version_db') {
     $stepNum++
@@ -339,7 +359,7 @@ Write-Host "  game/ files              $gameFileCount"
 
 # Show generated header sizes
 $sdkDir = Join-Path $repoRoot 'sdk'
-$headerFiles = @('x4_game_types.h', 'x4_game_func_list.inc', 'x4_game_func_table.h')
+$headerFiles = @('x4_game_types.h', 'x4_game_func_list.inc', 'x4_game_func_table.h', 'x4_game_class_ids.inc')
 foreach ($f in $headerFiles) {
     $path = Join-Path $sdkDir $f
     if (Test-Path $path) {

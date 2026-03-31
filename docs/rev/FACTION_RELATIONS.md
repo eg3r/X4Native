@@ -903,7 +903,7 @@ bool IsSameAlliance(FactionClass* a, FactionClass* b, uint8_t use_true_owner) {
 **Path 1 -- Coalition-based (`CheckCoalitionAlly` @ `0x140999320`):**
 1. Gets coalition container from faction_b via vtable+6048
 2. If container exists and has type flag 35 (coalition type):
-   - Reads coalition IDs for both factions via vtable+5600/5616 (depending on `use_true_owner`)
+   - Reads coalition IDs for both factions via vtable+5608/5624 (depending on `use_true_owner`)
    - Calls `CheckCoalitionRange(faction_a, coalition_id_a, relation_float, range=5)` where range 5 = "ally" (0.5 to 1.0)
    - If ally range fails, checks range 6 = "member" (0.1 to 1.0) AND verifies the entity is an online Venture object
 3. If no coalition container, falls back to reading faction IDs directly and checking ally range

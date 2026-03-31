@@ -85,7 +85,7 @@ All callers use the same pattern: `SetComponentName(componentID, nameString)`.
 3. **Class 74 special case:** If `component->IsClass(74)`, routes the SetName call through `g_GameUniverse+560` (universe-level name setting). This handles galaxy/universe objects.
 4. **Normal path:** Calls `component->vtable[0x1298/8](component, &this->name_string)` -- the SetName virtual method at vtable offset `0x1298` (4760 bytes). This is the primary name write.
 5. **Map editor defaults:** Also updates map editor defaults for the component if they exist:
-   - For class 71 (object): writes to map defaults offset +88
+   - For class 72 (object): writes to map defaults offset +88
    - For other classes: writes to map defaults offset +56
 
 ### Error Paths
@@ -100,15 +100,15 @@ All callers use the same pattern: `SetComponentName(componentID, nameString)`.
 |--------|--------|---------|
 | `0x1240` (4672) | `CanBeRenamed()` | Returns bool: whether the component can be renamed |
 | `0x1298` (4760) | `SetName(std::string*)` | Writes the name to the component |
-| `0x11B8` (4536) | `IsClass(int)` | Returns bool: whether component is of given class |
+| `0x11C0` (4544) | `IsClass(int)` | Returns bool: whether component is of given class |
 
 ### Relevant Class IDs
 
 | ID | Class | Name Behavior |
 |----|-------|---------------|
-| 71 | object | Map defaults at offset +88 |
+| 72 | object | Map defaults at offset +88 |
 | 74 | (galaxy/universe) | Routed through GameUniverse+560 |
-| 82 | controllable | Normal path (includes ships, stations) |
+| 83 | controllable | Normal path (includes ships, stations) |
 
 ---
 
@@ -239,4 +239,4 @@ x4n::hook::after<&X4GameFunctions::GetComponentName>(
 
 ## Version
 
-Analyzed on X4.exe v9.00 build 600626, 2026-03-23.
+Analyzed on X4.exe v9.00 build 603098, 2026-03-23.

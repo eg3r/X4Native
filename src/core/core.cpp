@@ -52,12 +52,6 @@ static stash_clear_fn  g_stash_clear  = nullptr;
 // Reads timing data from known game globals (verified v9.00 build 900).
 // See docs/rev/GAME_LOOP.md for reverse engineering notes.
 
-// Game global RVAs (offsets from X4.exe base)
-static constexpr uintptr_t RVA_GAME_TIME  = 0x6ADB5E8;  // double: game_time (scaled by speed)
-static constexpr uintptr_t RVA_RAW_TIME   = 0x6ADB5F0;  // double: always-incrementing wall time
-static constexpr uintptr_t RVA_REAL_TIME  = 0x6ADB5F8;  // double: unpaused real time
-static constexpr uintptr_t RVA_SPEED_MULT = 0x6ADB610;  // double: game speed multiplier
-
 static uintptr_t g_x4_base = 0;
 static void*     g_frame_tick_trampoline = nullptr;
 
@@ -65,25 +59,25 @@ using FrameTickFn = void(__fastcall*)(void*, bool);
 
 static void __fastcall frame_tick_detour(void* engineCtx, bool isSuspended) {
     // Snapshot raw_time before the original runs
-    double raw_time_before = *(double*)(g_x4_base + RVA_RAW_TIME);
+    double raw_time_before = *(double*)(g_x4_base + X4_RVA_FRAME_RAW_TIME);
 
     // Call original frame tick
     reinterpret_cast<FrameTickFn>(g_frame_tick_trampoline)(engineCtx, isSuspended);
 
     // Compute delta from the engine's own raw time accumulation
-    double raw_time_after = *(double*)(g_x4_base + RVA_RAW_TIME);
+    double raw_time_after = *(double*)(g_x4_base + X4_RVA_FRAME_RAW_TIME);
     double delta = raw_time_after - raw_time_before;
     if (delta < 0.0) delta = 0.0;
 
     // Build event payload
     X4NativeFrameUpdate update{};
     update.delta            = delta;
-    update.game_time        = *(double*)(g_x4_base + RVA_GAME_TIME);
-    update.real_time        = *(double*)(g_x4_base + RVA_REAL_TIME);
-    update.fps              = *(float*)((uintptr_t)engineCtx + 600);
-    update.speed_multiplier = (float)*(double*)(g_x4_base + RVA_SPEED_MULT);
+    update.game_time        = *(double*)(g_x4_base + X4_RVA_FRAME_GAME_TIME);
+    update.real_time        = *(double*)(g_x4_base + X4_RVA_FRAME_REAL_TIME);
+    update.fps              = *(float*)((uintptr_t)engineCtx + X4_ENGINECTX_OFFSET_FPS);
+    update.speed_multiplier = (float)*(double*)(g_x4_base + X4_RVA_FRAME_SPEED_MULT);
     update.is_suspended     = isSuspended;
-    update.frame_counter    = *(int*)((uintptr_t)engineCtx + 584);
+    update.frame_counter    = *(int*)((uintptr_t)engineCtx + X4_ENGINECTX_OFFSET_FRAME_COUNTER);
 
     auto* table = x4n::GameAPI::table();
     update.game_paused = (table && table->IsGamePaused) ? table->IsGamePaused() : false;

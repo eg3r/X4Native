@@ -214,7 +214,7 @@ Unlike the `+0x400` byte (which persists forever once set), these two bytes are 
 
 **Implication:** Cannot replicate `isinliveview` by copying a byte. It is a computed property requiring player ownership state, zone proximity, and tracking table lookups. For replication, evaluate on host and transmit the boolean result.
 
-### 2.7 Gravidar C++ Internals (Confirmed, Build 602526)
+### 2.7 Gravidar C++ Internals (Confirmed, Build 603098)
 
 The gravidar system runs its own tick loop on a **worker thread**, independent of the UI thread. Key functions:
 
@@ -274,7 +274,7 @@ RADAR SCAN PIPELINE
 **Logic:**
 1. Gets the scanning entity's radar range by calling vtable+8032 (returns `double`)
 2. If range <= 0, returns immediately (no radar = no scan)
-3. Walks parent hierarchy to find the containing sector (type 86, via vtable+4536 type check loop)
+3. Walks parent hierarchy to find the containing sector (type 87, via vtable+4544 type check loop)
 4. If a sector is found, applies the gravidar factor: `effective_range = base_range * gravidar_factor`
 5. Iterates a time-sorted red-black tree of entities (at global `qword_142EED5F0`)
 6. For each entity within effective range:
@@ -301,7 +301,7 @@ The global discovery queue at `qword_1438736B0` can hold up to 2048 inline entri
 
 The `isradarvisible` byte at component+1024 is written by:
 
-1. **MD action `set_object_radar_visible`** (handler: `SetObjectRadarVisible_Action` at `0x140B8BD30`)
+1. **MD action `set_object_radar_visible`** (handler: `SetObjectRadarVisible_Action` at `0x140B91CA0`)
    - Evaluates condition expression via `EvalConditionToBool`
    - Writes result (0 or 1) to component+1024
    - Dispatches `RadarVisibilityChangedEvent`
@@ -311,7 +311,7 @@ The `isradarvisible` byte at component+1024 is written by:
    - Entity creation sets +1024 = 0 (default state)
    - Entity teardown/destruction zeros the entire QWORD at +1024 (vtable method at `0x1407429C0`)
 
-**NOTE (confirmed, build 602526):** Exhaustive byte-pattern search (all x86-64 register
+**NOTE (confirmed, build 603098):** Exhaustive byte-pattern search (all x86-64 register
 encodings for `mov byte/dword/qword [reg + 0x400]`) found exactly these four write sites:
 
 | Address | Function | Action |
@@ -355,7 +355,7 @@ The forced radar visible byte at component+1025 is written by:
 3. **MD action `set_object_forced_radar_visible`** (handler: `0x140B8BFA0`)
    - Evaluates condition, calls `SetForcedRadarVisible_Internal`
 
-### 3.5 RadarVisibilityChangedEvent Dispatch Analysis (Confirmed, Build 602526)
+### 3.5 RadarVisibilityChangedEvent Dispatch Analysis (Confirmed, Build 603098)
 
 **Vtable:** `RadarVisibilityChangedEvent` vtable at `0x142B40060`.
 
@@ -364,7 +364,7 @@ Only **3 vtable references** found in the entire binary:
 | # | Function | Address | Purpose |
 |---|----------|---------|---------|
 | 1 | `RadarVisibilityChanged_BuildEvent` | case 375 in event switch | Serialization/deserialization factory for save/load |
-| 2 | `SetObjectRadarVisibleAction_Execute` | `0x140B8DD80` | MD `set_object_radar_visible` action handler |
+| 2 | `SetObjectRadarVisibleAction_Execute` | `0x140B91CA0` | MD `set_object_radar_visible` action handler |
 | 3 | `SetForcedRadarVisible_Internal` | `0x1406A50F0` | `SetObjectForcedRadarVisible` FFI internal |
 
 **Critical finding:** Function #1 (`BuildEvent`) is a **serialization factory** used only during save/load event reconstruction. It is **NEVER called during normal gameplay** — it exists solely to rebuild event objects from serialized data.
@@ -645,7 +645,7 @@ All Space subclasses (Sector, Cluster, Galaxy) share the SAME virtual implementa
 
 | Vtable | RTTI Address | Class |
 |--------|-------------|-------|
-| `U::Sector` | `0x142AB3C08` | Sector (class 86) |
+| `U::Sector` | `0x142AB3C08` | Sector (class 87) |
 | `U::Cluster` | `0x142A3B568` | Cluster (class 15) |
 | `U::Galaxy` | `0x142AAC298` | Galaxy (class 46) |
 
@@ -777,7 +777,7 @@ When `cap == 2`, the two faction pointers are stored inline at `known_factions_a
 | Function | Address | Size | Purpose |
 |----------|---------|------|---------|
 | `IsRadarVisible_ReadByte` | `0x14011BE30` | small | Returns `*(uint8_t*)(component + 0x400)` |
-| `SetObjectRadarVisible_Action` | `0x140B8BD30` | ~400B | MD action handler for `set_object_radar_visible` |
+| `SetObjectRadarVisible_Action` | `0x140B91CA0` | ~400B | MD action handler for `set_object_radar_visible` |
 | `MDAction_set_object_forced_radar_visible` | `0x140B8BFA0` | ~77B | MD action handler for `set_object_forced_radar_visible` |
 | `SetForcedRadarVisible_Internal` | `0x1406A3AC0` | ~350B | Writes +1025, dispatches event, propagates children |
 | `EvalConditionToBool` | `0x140C7F620` | | MD condition evaluator (232 callers) |
@@ -794,7 +794,7 @@ When `cap == 2`, the two faction pointers are stored inline at `known_factions_a
 | `Gravidar_UpdateInternal` | `0x141062580` | | Internal update with double-buffered state |
 | `Gravidar_ProcessContacts` | `0x14106C080` | | Processes live contact list after scan |
 | `EventSource_DispatchEvent` | `0x140956B50` | | Generic event dispatch (used by radar visibility events) |
-| `SetObjectRadarVisibleAction_Execute` | `0x140B8DD80` | | MD action execute for `set_object_radar_visible` (dispatches RadarVisibilityChangedEvent) |
+| `SetObjectRadarVisibleAction_Execute` | `0x140B91CA0` | | MD action execute for `set_object_radar_visible` (dispatches RadarVisibilityChangedEvent) |
 | `IsInLiveView` | `0x140697170` | | Three-branch priority eval: player-owned/tracked, zone proximity (+0x3C8), remote monitor (+0x3C9). Re-verified 2026-03-28. |
 | `IsPlayerOwnedOrTracked` | `0x1406A07D0` | | Branch 1 of IsInLiveView: owner==g_PlayerFaction, player occupancy, or tracking table |
 | `OnEnterLocalZoneVisibility` | `0x140692A90` | | Vtable handler: sets entity+0x3C8=1, registers in tracking system |
@@ -1099,7 +1099,7 @@ Sectors must have their parent cluster also marked known. Gates and highways nee
 ### 17.6 Hook Opportunities
 
 - **`SetKnownToFaction` (vtable+6016):** Single hook captures ALL discovery from all code paths.
-- **`RadarVisibilityChangedEvent`:** Subscribe via event system for radar changes. **WARNING:** Do NOT hook `RadarVisibilityChanged_BuildEvent` (case 375 in the event switch) — it is a save/load serialization factory and never fires during normal gameplay. Hook `SetObjectRadarVisibleAction_Execute` (`0x140B8DD80`) or `SetForcedRadarVisible_Internal` directly instead. See Section 3.5.
+- **`RadarVisibilityChangedEvent`:** Subscribe via event system for radar changes. **WARNING:** Do NOT hook `RadarVisibilityChanged_BuildEvent` (case 375 in the event switch) — it is a save/load serialization factory and never fires during normal gameplay. Hook `SetObjectRadarVisibleAction_Execute` (`0x140B91CA0`) or `SetForcedRadarVisible_Internal` directly instead. See Section 3.5.
 - **`SetObjectForcedRadarVisible` (FFI):** Hook to intercept forced visibility changes.
 
 ### 17.7 Batch Enumeration

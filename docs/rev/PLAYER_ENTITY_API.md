@@ -20,19 +20,19 @@ The player has multiple identity entities depending on context (cockpit vs on-fo
 
 **Address:** Reads from `player_slot[+8]`
 
-Returns the player's **actor** entity. This entity may lack class 71 (positional) when on-foot -- do NOT use with `GetObjectPositionInSector`. Use `GetPlayerObjectID()` instead for position reads.
+Returns the player's **actor** entity. This entity may lack class 72 (positional) when on-foot -- do NOT use with `GetObjectPositionInSector`. Use `GetPlayerObjectID()` instead for position reads.
 
 ### GetPlayerObjectID — Positional Entity
 
 **Address:** `0x14016C2D0` (RVA `0x16C2D0`)
 
-Walks `player_slot[+112]` parent chain for **class 71** (positional entity). Returns the **avatar entity** when on-foot (the first class-71 ancestor). This is the correct entity for `GetObjectPositionInSector` when the player is walking.
+Walks `player_slot[+112]` parent chain for **class 72** (positional entity). Returns the **avatar entity** when on-foot (the first class-71 ancestor). This is the correct entity for `GetObjectPositionInSector` when the player is walking.
 
 ### GetPlayerContainerID — Container (Station/Ship)
 
 **Address:** `0x14016BD30` (RVA `0x16BD30`)
 
-Returns the station/ship `UniverseID` the player is **inside**. Returns 0 in open space. Walks parent chain for **class 109** (container class). Works for both station and capital ship containers -- container-agnostic.
+Returns the station/ship `UniverseID` the player is **inside**. Returns 0 in open space. Walks parent chain for **class 110** (container class). Works for both station and capital ship containers -- container-agnostic.
 
 ### GetPlayerOccupiedShipID — Piloted Ship
 
@@ -42,7 +42,7 @@ Returns the player's currently piloted ship ID. Returns 0 when on foot. Used to 
 
 **Lua global handler:** `sub_14024E920` (RVA `0x24E920`)
 
-Walks `player_slot[0][+112]` parent chain for **class 82** (Room). Returns room `UniverseID` or nil. This is a bare Lua global -- call as `GetPlayerRoom()`, NOT `C.GetPlayerRoom()`.
+Walks `player_slot[0][+112]` parent chain for **class 83** (Room). Returns room `UniverseID` or nil. This is a bare Lua global -- call as `GetPlayerRoom()`, NOT `C.GetPlayerRoom()`.
 
 Found via the Lua registration table at `sub_140236710`.
 
@@ -58,19 +58,19 @@ The player slot is the root data structure for all player-related queries. Multi
 
 ### GetObjectPositionInSector
 
-Returns entity position relative to its sector origin. Internally walks `entity[+112]` parent chain for **class 86** (sector). Always returns sector-space coordinates regardless of entity nesting.
+Returns entity position relative to its sector origin. Internally walks `entity[+112]` parent chain for **class 87** (sector). Always returns sector-space coordinates regardless of entity nesting.
 
 ### SetObjectSectorPos — Entity Position Write
 
 **Address:** `0x140180500` (RVA `0x180500`)
 
-Sets an entity's position in sector space. Walks `entity[+112]` for **class 107** (zone) to determine zone containment. Works on any class 71 entity, including NPCs spawned via `SpawnObjectAtPos2`.
+Sets an entity's position in sector space. Walks `entity[+112]` for **class 108** (zone) to determine zone containment. Works on any class 72 entity, including NPCs spawned via `SpawnObjectAtPos2`.
 
 ### GetPositionalOffset — Room-Local Position
 
 **Address:** `0x14016CA80` (RVA `0x16CA80`)
 
-With `spaceid=0`, returns position relative to the entity's direct parent (the room when on-foot). `GetPlayerID()` returns the player actor entity (class 75 = positional) which is parented to the room component when on foot. This is the correct API for room-local walking coordinates.
+With `spaceid=0`, returns position relative to the entity's direct parent (the room when on-foot). `GetPlayerID()` returns the player actor entity (class 76 = positional) which is parented to the room component when on foot. This is the correct API for room-local walking coordinates.
 
 Internally calls `GetRelativeTransform` (`0x14039C3F0`, 380 callers -- core transform function).
 
@@ -136,10 +136,10 @@ Reads `player->data[29496]`. Returns the current room the player is standing in.
 | Name | Address | Purpose |
 |------|---------|---------|
 | `GetPlayerObjectID` | `0x14016C2D0` | Class 71 positional entity for player |
-| `GetPlayerContainerID` | `0x14016BD30` | Station/ship container (class 109) |
-| `GetPlayerRoom` (Lua handler) | `0x14024E920` | Room entity (class 82) |
+| `GetPlayerContainerID` | `0x14016BD30` | Station/ship container (class 110) |
+| `GetPlayerRoom` (Lua handler) | `0x14024E920` | Room entity (class 83) |
 | `GetPositionalOffset` | `0x14016CA80` | Room-local position with spaceid=0 |
-| `SetObjectSectorPos` | `0x140180500` | Entity position write (class 107 zone walk) |
+| `SetObjectSectorPos` | `0x140180500` | Entity position write (class 108 zone walk) |
 | `TeleportPlayerTo` | `0x1401C8410` | Move player into controllable |
 | `GetEnvironmentObject` | `0x140AB4D00` | Current room (cached field path) |
 | Player slot global | `0x143CA6D68` | +560 to slot pointer |

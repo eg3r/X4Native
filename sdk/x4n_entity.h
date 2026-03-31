@@ -4,9 +4,15 @@
 // Part of the X4Native SDK. Included by x4native.h.
 //
 // Provides:
-//   x4n::entity::find_component()     — resolve UniverseID to Object*
+//   x4n::entity::find_component()      — resolve UniverseID to Object*
+//   x4n::entity::get_class()        — runtime class ID via vtable (all types)
+//   x4n::entity::is_derived_from()     — IS-A class check via vtable (all types)
 //   x4n::entity::get_component_macro() — read macro name from any component
 //   x4n::entity::get_component_id()    — read UniverseID from component pointer
+//   x4n::entity::get_spawntime()       — Container-class spawntime
+//
+// Class IDs are auto-generated per game build via the pipeline (x4_game_class_ids.inc).
+// Use x4n::GameClass enum with get_class() / is_derived_from().
 //
 // All functions require on_game_loaded to have fired.
 // ---------------------------------------------------------------------------
@@ -31,6 +37,49 @@ inline X4Component* find_component(uint64_t id) {
     if (!s_reg) return nullptr;
     return static_cast<X4Component*>(
         g->ComponentRegistry_Find(s_reg, id, 4));
+}
+
+/// Get the runtime class ID of a component via its vtable (GetGameClass, slot 566).
+/// Works for ALL component types (player, NPC, object, space, etc.).
+/// Returns static_cast<GameClass>(GAMECLASS_SENTINEL) if the component is null or invalid.
+/// @note Do NOT use comp->class_id (+0x68) -- that field is NOT the class ID.
+///       GetGameClass is a virtual function returning a hardcoded constant per class.
+/// @stability STABLE -- vtable-based, no raw offsets.
+/// @verified v9.00 build 603098 (GetComponentClass decompilation)
+inline GameClass get_class(const X4Component* comp) {
+    if (!comp || !comp->vtable) return static_cast<GameClass>(GAMECLASS_SENTINEL);
+    using Fn = uint32_t(__fastcall*)(const void*);
+    auto fn = reinterpret_cast<Fn*>(comp->vtable)[X4_VTABLE_GET_CLASS_ID / 8];
+    return fn ? static_cast<GameClass>(fn(comp)) : static_cast<GameClass>(GAMECLASS_SENTINEL);
+}
+
+/// Convenience overload: get class ID by UniverseID.
+inline GameClass get_class(uint64_t id) {
+    return get_class(find_component(id));
+}
+
+/// Check if a component IS-A given class via vtable (IsOrDerivedFromGameClass, slot 568).
+/// Works for ALL component types. Use GameClass enum values.
+/// @stability STABLE -- vtable-based, no raw offsets.
+/// @verified v9.00 build 603098 (SetObjectRadarVisible, AddCluster decompilation)
+inline bool is_derived_from(const X4Component* comp, GameClass cls) {
+    if (!comp || !comp->vtable) return false;
+    using Fn = bool(__fastcall*)(const void*, uint32_t);
+    auto fn = reinterpret_cast<Fn*>(comp->vtable)[X4_VTABLE_IS_DERIVED_CLASS / 8];
+    return fn ? fn(comp, static_cast<uint32_t>(cls)) : false;
+}
+
+/// Convenience overload: IS-A check by UniverseID.
+inline bool is_derived_from(uint64_t id, GameClass cls) {
+    return is_derived_from(find_component(id), cls);
+}
+
+/// Get the class name string for an entity (e.g. "station", "sector", "player").
+/// Wraps the game's GetComponentClass export. Returns "" if unavailable.
+inline const char* get_class_name(uint64_t id) {
+    auto* g = game();
+    if (!g || !g->GetComponentClass) return "";
+    return g->GetComponentClass(id);
 }
 
 /// Read a component's UniverseID from its object pointer.
