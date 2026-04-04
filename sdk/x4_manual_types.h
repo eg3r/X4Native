@@ -186,7 +186,7 @@ typedef struct X4ComponentRegistry_ X4ComponentRegistry;
 // Container is the base class for entities that hold other entities.
 // Stations and ships inherit these offsets from Container.
 // WARNING: SpaceSuit stores spawntime at a different offset (0xC88).
-// Verified: v9.00 build 900 (Container_GetSpawnTime @ 0x140B19D30,
+// Verified: v9.00 build 603098 (Container_GetSpawnTime @ 0x140B19D30,
 //   Container load/save @ 0x1403B1FB0/0x1403B4210, save property 0x44C)
 #define X4_CONTAINER_OFFSET_SPAWNTIME      0x6E0  /* double — game time when created/connected to universe */
                                                    /*          sentinel -1.0 = not set.                      */
