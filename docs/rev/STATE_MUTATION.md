@@ -126,7 +126,7 @@ uint32_t __fastcall CreateOrder3(UniverseID controllableid, const char* orderid,
     void* entity = lookup_component(controllableid);
     if (!entity) return 0;
 
-    // 2. Validate player ownership
+    // 2. Validate player ownership — blocks NPC faction orders!
     if (!is_player_owned(entity)) return 0;
 
     // 3. Create order object — NO LOCKING
@@ -141,7 +141,66 @@ uint32_t __fastcall CreateOrder3(UniverseID controllableid, const char* orderid,
 - Component lookup via global `qword_146C6B940` — no synchronization
 - Direct entity manipulation
 - Order created inline, no deferred processing
+- **Player-ownership check blocks NPC orders** — use `CreateOrderInternal` instead
 - **Safe from our hook:** Yes — but the order won't be executed until next frame's AI update
+
+**Internal function:** `CreateOrderInternal` at `0x140424A90` (RVA `0x424A90`)
+
+Bypasses the player-ownership check. Used by X4Strategos for NPC faction orders.
+
+```c
+// a1 = X4Component* entity, a2 = AlignedStringView* order_id, a3 = mode, a4 = override
+void* __fastcall CreateOrderInternal(void* entity, void* string_view, int mode, char override) {
+    // Look up order definition from order_id string
+    void* order_def = resolve_order_definition(string_view);
+    if (!order_def) { log("Unknown order definition ID '%s'"); return NULL; }
+
+    // Allocate AIOrder object (112 bytes)
+    AIOrder* order = new AIOrder(order_def, mode == 3);  // is_default flag
+
+    if (mode == 3) {
+        // DEFAULT: destroy existing default order, replace
+        if (entity[160]) destroy(entity[160]);
+        entity[160] = order;
+    } else {
+        // QUEUE: push to order vector at entity[150..152]
+        entity_order_vector_push(entity + 150, order);
+        order[40] = (mode != 1);  // is_temp: true for mode 0/2, false for mode 1
+        order[43] = override;     // is_override flag
+    }
+}
+```
+
+**Order modes** (verified via decompilation of CreateOrderInternal + removal at `0x141034E00`):
+
+| Mode | Name | Storage | is_temp | Behavior |
+|------|------|---------|---------|----------|
+| 0 | Immediate | Queue | true | Fire-and-forget interrupt. Always destroyed on removal/completion. Previous behavior resumes. |
+| 1 | Queue | Queue | false | Planned sequence step. Survives queue manipulation. On completion (state 8): reset via `0x14102EEE0` (can re-activate). |
+| 2 | (unused) | Queue | true | Identical to mode 0 (game checks `==3` and `==1` only). |
+| 3 | Default | entity[160] | n/a | Standing order. Loops when queue empty. Only one active. |
+
+**AIOrder object layout** (from constructor at `0x14102B640`):
+
+| Offset | Type | Field | Set By |
+|--------|------|-------|--------|
+| +0 | ptr | vtable (`AI::AIOrder::vftable`) | constructor |
+| +16 | ptr | order_definition | constructor |
+| +24 | ptr | entity | CreateOrderInternal |
+| +32 | i32 | state (init=2, then 3→4→...→8) | lifecycle |
+| +36 | byte | is_default | constructor (mode==3) |
+| +37 | byte | is_active | queue manager |
+| +38 | byte | activation_state | sub_14102FC30 |
+| +40 | byte | **is_temp** | CreateOrderInternal (mode!=1) |
+| +43 | byte | is_override | CreateOrderInternal (a4) |
+| +44 | i32 | priority (default=4096) | constructor |
+
+**Order states** (from lifecycle analysis):
+- 2: Created (initial)
+- 3: Params initialized (after sub_14102B990)
+- 4+: Ready/running (triggers AIOrderReadyEvent via sub_14102FC90)
+- 5-7: Completing states
+- 8: Completed — mode 0 orders destroyed, mode 1 orders reset
 
 ---
 

@@ -94,11 +94,15 @@ X4_FUNC(uint8_t, IsRadarVisible_ReadByte, (void* component))
 // CreateOrderInternal — creates an AI order on a Controllable entity.
 // Bypasses the player-ownership check in the exported CreateOrder3.
 // entity = X4Component* (must be Controllable-derived, from ComponentRegistry_Find)
-// string_view = pointer to {const char* data, size_t length} struct with order ID
-// mode = 3 (default order), 1 (regular), 0 (temp)
-// override = bool (is override order)
-// Returns order object pointer (nullptr on failure).
+// string_view = pointer to {const char* data, size_t length} struct (16-byte aligned)
+// mode: 3 = Default (replaces entity[160], loops when queue empty)
+//       1 = Queue   (pushes to entity[150..152] vector, is_temp=false, persists)
+//       0 = Immediate (pushes to queue, is_temp=true, destroyed on completion)
+//       2 = same as 0 (game checks ==3 and ==1 only)
+// override = bool (is override order, stored at AIOrder+43)
+// Returns AIOrder* (112 bytes, vtable AI::AIOrder). nullptr on unknown order ID.
 // Called by exported CreateOrder3 after the ownership check.
+// See also: removal logic at sub_141034E00, AIOrder layout in STATE_MUTATION.md.
 // Verified: v9.00 build 603098, RVA 0x00424A90
 X4_FUNC(void*, CreateOrderInternal, (void* entity, void* string_view, int mode, char override_flag))
 
