@@ -156,36 +156,36 @@ public:
 
     /// Patrol a sector. Engages hostiles on sight. Loops indefinitely.
     /// @param sector  0 = current zone
-    bool order_patrol(UniverseID sector = 0) {
-        void* order = create_order("Patrol");
+    bool order_patrol(UniverseID sector = 0, OrderMode mode = OrderMode::Default) {
+        void* order = create_order("Patrol", mode);
         if (!order) return false;
         if (sector != 0) set_order_param_entity(order, 0, sector);
         return true;
     }
 
     /// Attack a specific target (ship or station).
-    bool order_attack(UniverseID target) {
-        void* order = create_order("Attack", OrderMode::Queue);
+    bool order_attack(UniverseID target, OrderMode mode = OrderMode::Default) {
+        void* order = create_order("Attack", mode);
         if (!order) return false;
         return set_order_param_entity(order, 0, target);
     }
 
     /// Guard a station. Patrols station zone, responds to threats.
-    bool order_protect_station(UniverseID station) {
-        void* order = create_order("ProtectStation");
+    bool order_protect_station(UniverseID station, OrderMode mode = OrderMode::Default) {
+        void* order = create_order("ProtectStation", mode);
         if (!order) return false;
         return set_order_param_entity(order, 0, station);
     }
 
     /// Trade autonomously. Uses ship's ware basket from commander.
-    bool order_trade_routine() {
-        return create_order("TradeRoutine") != nullptr;
+    bool order_trade_routine(OrderMode mode = OrderMode::Default) {
+        return create_order("TradeRoutine", mode) != nullptr;
     }
 
     /// Mine autonomously. Uses ship's ware basket from commander.
     /// @param sector  0 = current area
-    bool order_mining_routine(UniverseID sector = 0) {
-        void* order = create_order("MiningRoutine");
+    bool order_mining_routine(UniverseID sector = 0, OrderMode mode = OrderMode::Default) {
+        void* order = create_order("MiningRoutine", mode);
         if (!order) return false;
         if (sector != 0) set_order_param_entity(order, 1, sector);
         return true;
@@ -195,8 +195,8 @@ public:
     /// fires 'recon update' signal. Deploys satellites by default.
     /// @param sector       Target sector to scout
     /// @param deploy_sats  Deploy satellites at points of interest
-    bool order_recon(UniverseID sector, bool deploy_sats = true) {
-        void* order = create_order("Recon");
+    bool order_recon(UniverseID sector, bool deploy_sats = true, OrderMode mode = OrderMode::Default) {
+        void* order = create_order("Recon", mode);
         if (!order) return false;
         if (sector != 0) set_order_param_entity(order, 0, sector);
         set_order_param_bool(order, 10, deploy_sats);
@@ -204,16 +204,16 @@ public:
     }
 
     /// Escort a ship in formation. Breaks formation on combat.
-    bool order_escort(UniverseID target) {
-        void* order = create_order("Escort");
+    bool order_escort(UniverseID target, OrderMode mode = OrderMode::Default) {
+        void* order = create_order("Escort", mode);
         if (!order) return false;
         return set_order_param_entity(order, 0, target);
     }
 
     /// Autonomous salvage collection.
     /// @param sector  0 = use job main sector / commander sector
-    bool order_salvage(UniverseID sector = 0) {
-        void* order = create_order("SalvageRoutine");
+    bool order_salvage(UniverseID sector = 0, OrderMode mode = OrderMode::Default) {
+        void* order = create_order("SalvageRoutine", mode);
         if (!order) return false;
         if (sector != 0) set_order_param_sector(order, 0, sector);
         return true;
@@ -222,8 +222,8 @@ public:
     /// Fleet coordination from a flagship (L/XL). Coordinates subordinates.
     /// @param target         Ship or station to attack
     /// @param aggressiveness 0-100 (default 50)
-    bool order_tactical(UniverseID target, int32_t aggressiveness = 50) {
-        void* order = create_order("TacticalOrder");
+    bool order_tactical(UniverseID target, int32_t aggressiveness = 50, OrderMode mode = OrderMode::Default) {
+        void* order = create_order("TacticalOrder", mode);
         if (!order) return false;
         set_order_param_entity(order, 0, target);
         set_order_param_number(order, 1, aggressiveness);
@@ -232,23 +232,23 @@ public:
 
     /// Piracy operations. Requires high pilot skill.
     /// @param sector  Operating area (0 = ship's cluster)
-    bool order_plunder(UniverseID sector = 0) {
-        void* order = create_order("Plunder");
+    bool order_plunder(UniverseID sector = 0, OrderMode mode = OrderMode::Default) {
+        void* order = create_order("Plunder", mode);
         if (!order) return false;
         if (sector != 0) set_order_param_entity(order, 0, sector);
         return true;
     }
 
     /// Guard a specific ship (VIP escort).
-    bool order_protect_ship(UniverseID target) {
-        void* order = create_order("ProtectShip");
+    bool order_protect_ship(UniverseID target, OrderMode mode = OrderMode::Default) {
+        void* order = create_order("ProtectShip", mode);
         if (!order) return false;
         return set_order_param_entity(order, 0, target);
     }
 
     /// Construction vessel seeks build tasks.
-    bool order_supply_fleet() {
-        return create_order("SupplyFleet") != nullptr;
+    bool order_supply_fleet(OrderMode mode = OrderMode::Default) {
+        return create_order("SupplyFleet", mode) != nullptr;
     }
 };
 

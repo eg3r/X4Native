@@ -22,7 +22,7 @@ namespace stash {
 /// Stash a raw blob under the extension's default namespace.
 inline bool set(const char* key, const void* data, uint32_t size) {
     auto* api = detail::g_api;
-    const char* ns = static_cast<const char*>(api->_reserved[0]);
+    const char* ns = api->_ext_name;
     return api->stash_set(ns, key, data, size) != 0;
 }
 
@@ -30,21 +30,21 @@ inline bool set(const char* key, const void* data, uint32_t size) {
 /// *out_size receives the byte count. Pointer valid until next set/remove.
 inline const void* get(const char* key, uint32_t* out_size = nullptr) {
     auto* api = detail::g_api;
-    const char* ns = static_cast<const char*>(api->_reserved[0]);
+    const char* ns = api->_ext_name;
     return api->stash_get(ns, key, out_size);
 }
 
 /// Remove a single key. Returns true if the key existed.
 inline bool remove(const char* key) {
     auto* api = detail::g_api;
-    const char* ns = static_cast<const char*>(api->_reserved[0]);
+    const char* ns = api->_ext_name;
     return api->stash_remove(ns, key) != 0;
 }
 
 /// Remove all keys belonging to this extension.
 inline void clear() {
     auto* api = detail::g_api;
-    const char* ns = static_cast<const char*>(api->_reserved[0]);
+    const char* ns = api->_ext_name;
     api->stash_clear(ns);
 }
 

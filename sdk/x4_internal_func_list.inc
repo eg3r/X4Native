@@ -143,3 +143,11 @@ X4_FUNC(bool, SetCommander, (UniverseID controllableid, UniverseID commanderid, 
 // PE export with no FFI signature. Signature derived via IDA decompilation.
 // Verified: v9.00 build 603098, RVA 0x001C5FC0
 X4_FUNC(void, SetAssignment, (UniverseID controllableid, const char* assignment))
+
+// EventQueue_InsertOrDispatch — central MD event dispatch funnel.
+// ALL MD events (1245+ call sites) pass through this function. If immediate==true
+// and timestamp <= current_time + epsilon, dispatches immediately to cue listeners.
+// Otherwise inserts into a timestamp-sorted priority queue for deferred dispatch.
+// Hooked by X4Native core to fire on_md_before/on_md_after per event type_id.
+// Verified: v9.00 build 603098, RVA 0x00958390
+X4_FUNC(void, EventQueue_InsertOrDispatch, (void* event_source, void* event_object, double timestamp, char immediate))

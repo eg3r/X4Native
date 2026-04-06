@@ -1,0 +1,7 @@
+{
+    "name": "event_probe",
+    "library": "native\\x4native_event_probe.dll",
+    "priority": 200,
+    "min_api_version": 1,
+    "autoreload": true
+}

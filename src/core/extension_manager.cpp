@@ -195,7 +195,7 @@ static void api_log_ext(int level, const char* message, void* api_ptr) {
     auto lv = static_cast<x4n::LogLevel>(level);
     if (api_ptr) {
         auto* api = static_cast<X4NativeAPI*>(api_ptr);
-        HANDLE h = static_cast<HANDLE>(api->_reserved[3]);
+        HANDLE h = static_cast<HANDLE>(api->_ext_log_handle);
         if (h && h != INVALID_HANDLE_VALUE) {
             x4n::Logger::write_to(h, lv, message);
             return;
@@ -209,14 +209,14 @@ static void api_log_ext(int level, const char* message, void* api_ptr) {
 static void api_init_log(const char* filename, void* api_ptr) {
     if (!api_ptr) return;
     auto* api  = static_cast<X4NativeAPI*>(api_ptr);
-    auto* ext  = static_cast<ExtensionInfo*>(api->_reserved[7]);
+    auto* ext  = static_cast<ExtensionInfo*>(api->_ext_info);
     if (!ext) return;
 
     // If called with no filename (or empty), keep the current log — no-op.
     if (!filename || !filename[0]) return;
 
     // Close old handle
-    HANDLE old_h = static_cast<HANDLE>(api->_reserved[3]);
+    HANDLE old_h = static_cast<HANDLE>(api->_ext_log_handle);
     if (old_h && old_h != INVALID_HANDLE_VALUE) {
         FlushFileBuffers(old_h);
         CloseHandle(old_h);
@@ -229,14 +229,14 @@ static void api_init_log(const char* filename, void* api_ptr) {
     HANDLE new_h = Logger::open_log(new_path);
     if (new_h == INVALID_HANDLE_VALUE) {
         OutputDebugStringA(("X4Native: failed to open extension log: " + new_path + "\n").c_str());
-        api->_reserved[3] = INVALID_HANDLE_VALUE;
+        api->_ext_log_handle = INVALID_HANDLE_VALUE;
         ext->log_handle   = INVALID_HANDLE_VALUE;
         return;
     }
 
     ext->log_handle   = new_h;
     ext->log_path     = new_path;
-    api->_reserved[3] = new_h;
+    api->_ext_log_handle = new_h;
     x4n::Logger::write_to(new_h, x4n::LogLevel::Info,
                            "Extension log initialized: " + new_path);
 }
@@ -535,7 +535,7 @@ static int api_subscribe(const char* event_name, X4NativeEventCallback cb, void*
     // Track subscription for auto-cleanup on extension unload
     if (id > 0 && api_ptr) {
         auto* api = static_cast<X4NativeAPI*>(api_ptr);
-        auto* ids = static_cast<std::vector<int>*>(api->_reserved[2]);
+        auto* ids = static_cast<std::vector<int>*>(api->_ext_subscription_ids);
         if (ids) ids->push_back(id);
     }
     return id;
@@ -573,15 +573,15 @@ static const char* api_get_x4native_version() {
 // Hook wrappers — extract extension context from the API pointer
 static int api_hook_before(const char* fn, X4HookCallback cb, void* ud, void* api_ptr) {
     auto* api = static_cast<X4NativeAPI*>(api_ptr);
-    auto* ext_name = static_cast<const char*>(api->_reserved[0]);
-    int ext_priority = static_cast<int>(reinterpret_cast<intptr_t>(api->_reserved[1]));
+    auto* ext_name = api->_ext_name;
+    int ext_priority = static_cast<int>(api->_ext_priority);
     return HookManager::hook_before(fn, cb, ud, ext_priority, ext_name);
 }
 
 static int api_hook_after(const char* fn, X4HookCallback cb, void* ud, void* api_ptr) {
     auto* api = static_cast<X4NativeAPI*>(api_ptr);
-    auto* ext_name = static_cast<const char*>(api->_reserved[0]);
-    int ext_priority = static_cast<int>(reinterpret_cast<intptr_t>(api->_reserved[1]));
+    auto* ext_name = api->_ext_name;
+    int ext_priority = static_cast<int>(api->_ext_priority);
     return HookManager::hook_after(fn, cb, ud, ext_priority, ext_name);
 }
 
@@ -603,6 +603,15 @@ static void api_run_after_hooks(X4HookContext* ctx) {
 
 static void* api_resolve_internal(const char* name) {
     return GameAPI::get_internal(name);
+}
+
+// MD event subscription wrappers
+static int api_md_subscribe_before(uint32_t type_id, X4NativeEventCallback cb, void* ud, void* /*api*/) {
+    return EventSystem::md_subscribe_before(type_id, cb, ud);
+}
+
+static int api_md_subscribe_after(uint32_t type_id, X4NativeEventCallback cb, void* ud, void* /*api*/) {
+    return EventSystem::md_subscribe_after(type_id, cb, ud);
 }
 
 static int api_register_lua_bridge(const char* lua_event, const char* cpp_event) {
@@ -636,26 +645,20 @@ void ExtensionManager::fill_api(X4NativeAPI& api, ExtensionInfo& ext) {
     api.resolve_internal     = api_resolve_internal;
     api.exe_base             = GameAPI::exe_base();
     api.register_lua_bridge  = api_register_lua_bridge;
+    api.md_subscribe_before  = api_md_subscribe_before;
+    api.md_subscribe_after   = api_md_subscribe_after;
     api.stash_set            = s_stash_set;
     api.stash_get            = s_stash_get;
     api.stash_remove         = s_stash_remove;
     api.stash_clear          = s_stash_clear;
-    memset(api._reserved, 0, sizeof(api._reserved));
-    // Slots [0-2]: extension context (read by hook/subscribe implementations)
-    api._reserved[0] = const_cast<char*>(ext.name.c_str());
-    api._reserved[1] = reinterpret_cast<void*>(static_cast<intptr_t>(ext.priority));
-    api._reserved[2] = &ext.subscription_ids;
-    // Slots [3-7]: per-extension logging (used by x4native.h SDK log helpers)
-    //   [3] HANDLE          — current per-extension log file handle
-    //   [4] fn(int,str,ptr) — api_log_ext:   write to extension's own log
-    //   [5] fn(str,ptr)     — api_init_log:  reinitialize log with a new filename
-    //   [6] fn(int,str,str,ptr) — api_log_named: one-shot write to a named file
-    //   [7] ExtensionInfo*  — framework pointer (used by api_init_log)
-    api._reserved[3] = ext.log_handle;
-    api._reserved[4] = reinterpret_cast<void*>(api_log_ext);
-    api._reserved[5] = reinterpret_cast<void*>(api_init_log);
-    api._reserved[6] = reinterpret_cast<void*>(api_log_named);
-    api._reserved[7] = &ext;
+    api._ext_name             = ext.name.c_str();
+    api._ext_priority         = static_cast<intptr_t>(ext.priority);
+    api._ext_subscription_ids = &ext.subscription_ids;
+    api._ext_log_handle       = ext.log_handle;
+    api._ext_log_fn           = reinterpret_cast<void*>(api_log_ext);
+    api._ext_init_log_fn      = reinterpret_cast<void*>(api_init_log);
+    api._ext_log_named_fn     = reinterpret_cast<void*>(api_log_named);
+    api._ext_info             = &ext;
 }
 
 // ---------------------------------------------------------------------------

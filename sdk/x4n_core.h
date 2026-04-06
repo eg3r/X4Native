@@ -58,7 +58,7 @@ namespace detail {
             static_cast<const char*>(data));
     }
 
-    // Trampoline: adapts void(const X4RadarChangedEvent*) for radar visibility events
+    // [OBSOLETE] Use x4n::md::on_radar_visibility_changed_before() instead.
     inline void trampoline_radar_changed(const char*, void* data, void* ud) {
         reinterpret_cast<void(*)(const X4RadarChangedEvent*)>(ud)(
             static_cast<const X4RadarChangedEvent*>(data));

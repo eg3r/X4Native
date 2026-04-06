@@ -46,7 +46,8 @@ inline int on(const char* name, void(*callback)(const char*)) {
         detail::g_api);
 }
 
-/// Subscribe with a typed X4RadarChangedEvent callback (for on_radar_changed).
+/// @deprecated Superseded by MD event hook system (type_id 376).
+[[deprecated("Superseded by MD event hook system. Subscribe via on_md_before(376, trampoline, ud)")]]
 inline int on(const char* name, void(*callback)(const X4RadarChangedEvent*)) {
     return detail::g_api->subscribe(
         name, detail::trampoline_radar_changed, reinterpret_cast<void*>(callback),

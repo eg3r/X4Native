@@ -28,7 +28,7 @@ namespace detail {
             msg = buf;
         }
         auto* api = ::x4n::detail::g_api;
-        auto  fn  = reinterpret_cast<void(*)(int, const char*, void*)>(api->_reserved[4]);
+        auto  fn  = reinterpret_cast<void(*)(int, const char*, void*)>(api->_ext_log_fn);
         if (fn) fn(level, msg, api);
         else    api->log(level, msg);
     }
@@ -42,7 +42,7 @@ namespace detail {
     inline void write_named(int level, const char* msg, const char* filename) {
         auto* api = ::x4n::detail::g_api;
         auto  fn  = reinterpret_cast<void(*)(int, const char*, const char*, void*)>(
-                        api->_reserved[6]);
+                        api->_ext_log_named_fn);
         if (fn) fn(level, msg, filename, api);
         else    write(level, msg);
     }
@@ -52,7 +52,7 @@ namespace detail {
 // Redirect all subsequent log calls to a different file inside the extension folder.
 inline void set_log_file(const char* filename) {
     auto* api = ::x4n::detail::g_api;
-    auto  fn  = reinterpret_cast<void(*)(const char*, void*)>(api->_reserved[5]);
+    auto  fn  = reinterpret_cast<void(*)(const char*, void*)>(api->_ext_init_log_fn);
     if (fn) fn(filename, api);
 }
 

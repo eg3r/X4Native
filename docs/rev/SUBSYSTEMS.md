@@ -573,6 +573,25 @@ sequenceDiagram
 main-thread-only. The drain-and-process pattern minimizes lock hold time by detaching
 the queue atomically and processing the detached list without holding the lock.
 
+### Three Separate Event Systems
+
+X4 has three distinct event systems that do **not** cross-talk automatically:
+
+| System | Consumers | Event Names | Transport |
+|--------|-----------|-------------|-----------|
+| **C++ Typed Events** | Subsystem update callbacks | RTTI class names (`U::MoneyUpdatedEvent`, `U::UnitDestroyedEvent`) | Global queue → RB-tree per-source dispatch |
+| **MD Cue Events** | MD XML cue listeners (`<event_object_destroyed>`) | Integer type IDs (e.g., 0x4A7 for `event_object_destroyed`) | Property change dispatcher jump table (`PropertyChangeDispatcher_JumpTable` at `0x14095AA50`, 15KB, 500+ cases) → `EventQueue_InsertOrDispatch` (`0x140958390`) → priority queue by game time → `EventQueue_ImmediateDispatch` (`0x14095A410`) iterates cue listener array |
+| **Lua UI Events** | `RegisterEvent("eventName", callback)` in Lua addons | String names (`"gameSaved"`, `"playerUndock"`) | Engine queues into buffer (CritSec-protected at object+912) → `UIEventSystem_ProcessGenericEventQueue` (`0x140AF3000`) drains per UI frame → `"genericEvent"` contract → `widgetSystem.onEvent` → `CallEventScripts` |
+
+**Key architectural fact:** MD cue event names (e.g., `event_object_destroyed`) are **never** dispatched
+through the Lua UI event path. The only bridge is the MD action `<raise_lua_event>`, which is a
+one-way explicit push from MD to Lua (used sparingly for UI notifications like `info_updatePeople`).
+Lua's `RegisterEvent` cannot subscribe to MD game events.
+
+To intercept MD-level game events from C++, the options are:
+1. **MinHook detour** on individual `*_BuildEvent` functions (per-event, version-sensitive)
+2. **MD script bridge** — MD cue listener calls `<raise_lua_event>` which can then be captured via X4Native's `bridge_lua_event()` mechanism
+
 ---
 
 ## 7. Suspended-Mode Subsystems

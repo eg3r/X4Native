@@ -279,6 +279,24 @@
         "byte_sig_note": "First 30 bytes: mov [rsp+8],rbx; mov [rsp+10h],rbp; mov [rsp+18h],rsi; mov [rsp+20h],rdi; push r14; sub rsp,60h; mov rbx,rdx; mov rdi,rcx."
       },
       "900-603098": { "rva": "0x001C5FC0" }
+    },
+    "EventQueue_InsertOrDispatch": {
+      "_find_hints": {
+        "method": "caller_chain",
+        "steps": [
+          "1. Central MD event dispatch funnel — ALL MD events pass through this function (1245+ callers)",
+          "2. Search for RTTI string 'EventSource@U@@' in .rdata, find vtable via COL",
+          "3. Follow code xrefs to the vtable — vtable consumers include the dispatch functions",
+          "4. The target function takes 4 args: (event_source* rcx, event_object* rdx, double xmm2 timestamp, char r9 immediate)",
+          "5. If immediate && timestamp <= current_time + 0.0001: calls ImmediateDispatch, else inserts into priority queue",
+          "6. ImmediateDispatch (called from this function) iterates up to 2048 registered cue listeners",
+          "7. Verify: function size ~200 bytes, contains ucomisd + jbe for the timestamp check"
+        ],
+        "verify_strings": [],
+        "byte_sig": "48 89 5C 24 10 48 89 6C 24 18 48 89 74 24 20 57 48 83 EC 20",
+        "byte_sig_note": "Prologue: saves rbx/rbp/rsi, push rdi, sub rsp 20h. Event_source in rcx, event_object in rdx, timestamp in xmm2, immediate in r9b."
+      },
+      "900-603098": { "rva": "0x00958390" }
     }
   }
 }

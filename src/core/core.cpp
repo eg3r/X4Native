@@ -26,6 +26,7 @@
 #endif
 #include <windows.h>
 
+#include <array>
 #include <string>
 #include <cmath>
 
@@ -127,7 +128,9 @@ static void remove_frame_tick_hook() {
 }
 
 // ---------------------------------------------------------------------------
-// Radar visibility hook — fires on_radar_changed to extensions
+// [OBSOLETE] Radar visibility hook — fires on_radar_changed to extensions
+// Superseded by MD event hook: use x4n::md::on_radar_visibility_changed_before()
+// Kept for backward compatibility. Will be removed in a future version.
 // ---------------------------------------------------------------------------
 // Direct MinHook detour on the engine's RadarVisibilityChanged_BuildEvent.
 // Called from the sector update property change handler (case 378) when an
@@ -188,6 +191,91 @@ static void remove_radar_visibility_hook() {
 }
 
 // ---------------------------------------------------------------------------
+// MD event dispatch hook — fires on_md_before / on_md_after per type_id
+// ---------------------------------------------------------------------------
+// MinHook detour on EventQueue_InsertOrDispatch. O(1) dispatch via flat
+// arrays indexed by type_id. Extensions subscribe via on_md_before/after().
+
+static void* g_md_event_trampoline = nullptr;
+
+static void __fastcall md_event_dispatch_detour(
+    void* event_source, void* event_object, double timestamp, char immediate)
+{
+    uint32_t type_id = UINT32_MAX;
+
+    if (event_object) {
+        // Read type ID from vtable[1]: always `B8 imm32 C3` (mov eax, imm32; ret)
+        __try {
+            auto vtable = *reinterpret_cast<void***>(event_object);
+            auto fn_bytes = reinterpret_cast<uint8_t*>(vtable[1]);
+            if (fn_bytes[0] == 0xB8 && fn_bytes[5] == 0xC3) {
+                type_id = *reinterpret_cast<uint32_t*>(fn_bytes + 1);
+            }
+        } __except(EXCEPTION_EXECUTE_HANDLER) {
+            type_id = UINT32_MAX;
+        }
+    }
+
+    // Fire before-subscribers
+    if (type_id < x4n::EventSystem::MAX_MD_TYPE) {
+        uint64_t source_id = event_source ?
+            *reinterpret_cast<uint64_t*>(reinterpret_cast<uintptr_t>(event_source) + 8) : 0;
+        X4MdEvent payload{type_id, source_id, timestamp, event_object};
+        x4n::EventSystem::md_fire_before(type_id, &payload);
+    }
+
+    // Original dispatch — MD cue listeners fire here
+    using OrigFn = void(__fastcall*)(void*, void*, double, char);
+    reinterpret_cast<OrigFn>(g_md_event_trampoline)(
+        event_source, event_object, timestamp, immediate);
+
+    // Fire after-subscribers
+    if (type_id < x4n::EventSystem::MAX_MD_TYPE) {
+        uint64_t source_id = event_source ?
+            *reinterpret_cast<uint64_t*>(reinterpret_cast<uintptr_t>(event_source) + 8) : 0;
+        X4MdEvent payload{type_id, source_id, timestamp, event_object};
+        x4n::EventSystem::md_fire_after(type_id, &payload);
+    }
+}
+
+static bool install_md_event_hook() {
+    auto* table = x4n::GameAPI::table();
+    void* target = table ? reinterpret_cast<void*>(table->EventQueue_InsertOrDispatch) : nullptr;
+    if (!target) {
+        x4n::Logger::warn("MD event hook: EventQueue_InsertOrDispatch not resolved (missing RVA for this build?)");
+        return false;
+    }
+
+    MH_STATUS status = MH_CreateHook(target, &md_event_dispatch_detour, &g_md_event_trampoline);
+    if (status != MH_OK) {
+        x4n::Logger::error("MD event hook: MH_CreateHook failed: {}", MH_StatusToString(status));
+        return false;
+    }
+
+    status = MH_EnableHook(target);
+    if (status != MH_OK) {
+        x4n::Logger::error("MD event hook: MH_EnableHook failed: {}", MH_StatusToString(status));
+        MH_RemoveHook(target);
+        return false;
+    }
+
+    x4n::Logger::info("MD event hook installed (on_md_before/on_md_after, {} type slots)",
+                      x4n::EventSystem::MAX_MD_TYPE);
+    return true;
+}
+
+static void remove_md_event_hook() {
+    auto* table = x4n::GameAPI::table();
+    void* target = table ? reinterpret_cast<void*>(table->EventQueue_InsertOrDispatch) : nullptr;
+    if (target && g_md_event_trampoline) {
+        MH_DisableHook(target);
+        MH_RemoveHook(target);
+        g_md_event_trampoline = nullptr;
+    }
+    // MD subscription cleanup handled by EventSystem::init() on next startup
+}
+
+// ---------------------------------------------------------------------------
 // Dispatch implementations (called by proxy via function pointers)
 // ---------------------------------------------------------------------------
 
@@ -224,6 +312,7 @@ static void impl_prepare_reload() {
     x4n::Logger::info("Preparing for core hot-reload...");
     x4n::EventSystem::fire("on_before_reload");
     x4n::ExtensionManager::shutdown();
+    remove_md_event_hook();
     remove_radar_visibility_hook();
     remove_frame_tick_hook();
     x4n::HookManager::remove_all();
@@ -232,6 +321,7 @@ static void impl_prepare_reload() {
 static void impl_shutdown() {
     x4n::Logger::info("Core shutting down...");
     x4n::ExtensionManager::shutdown();
+    remove_md_event_hook();
     remove_radar_visibility_hook();
     remove_frame_tick_hook();
     x4n::HookManager::shutdown();
@@ -273,8 +363,11 @@ int core_init(CoreInitContext* ctx) {
     // 5b. Native frame tick hook (core-owned, fires on_native_frame_update)
     install_frame_tick_hook();
 
-    // 5c. Radar visibility hook (core-owned, fires on_radar_changed)
+    // 5c. [OBSOLETE] Radar visibility hook — superseded by MD event hook (type_id 376)
     install_radar_visibility_hook();
+
+    // 5d. MD event dispatch hook (core-owned, fires on_md_before/on_md_after)
+    install_md_event_hook();
 
     // 6. Extension manager
     g_raise_lua_event = ctx->raise_lua_event;

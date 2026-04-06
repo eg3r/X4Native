@@ -419,6 +419,19 @@ typedef struct alignas(16) X4PlanEntry {
 #define X4_OBJECT_OFFSET_RADAR_VISIBLE          0x400  /* uint8 — radar visibility, set by engine property system + MD action */
 #define X4_OBJECT_OFFSET_FORCED_RADAR_VISIBLE   0x401  /* uint8 — forced radar visibility (satellites, nav beacons) */
 
+// ======== MD EVENT SYSTEM =================================================
+// Hooked by X4Native core via EventQueue_InsertOrDispatch (version_db).
+// Fires on_md_before / on_md_after per event type_id.
+// For typed callbacks, include x4_md_events.h (auto-generated).
+
+typedef struct X4MdEvent {
+    uint32_t  type_id;          // Event type (matches x4_md_events.h constants)
+    uint64_t  source_id;        // EventSource entity Universe ID
+    double    timestamp;        // Game time
+    void*     raw_event;        // Raw event object (read fields via x4_md_events.h structs)
+} X4MdEvent;
+
+
 // ---- RadarVisibilityChangedEvent Layout ----
 // Dispatched by the engine when radar visibility changes on an entity.
 // Three dispatchers: SetForcedRadarVisible_Internal, SetObjectRadarVisible_Action,

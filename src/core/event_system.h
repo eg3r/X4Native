@@ -9,6 +9,7 @@
 #include <string>
 #include <functional>
 #include <unordered_map>
+#include <array>
 #include <vector>
 #include <mutex>
 
@@ -21,18 +22,19 @@ public:
     static void init();
     static void shutdown();
 
-    /// Subscribe to an event. Returns a unique subscription id.
-    static int subscribe(const std::string& event_name,
-                         EventCallback callback,
-                         void* userdata = nullptr);
-
-    /// Remove a subscription by id.
+    // Named event pub/sub
+    static int subscribe(const char* event_name, EventCallback callback, void* userdata = nullptr);
     static void unsubscribe(int id);
-
-    /// Dispatch an event to all subscribers.
     static void fire(const char* event_name, void* data = nullptr);
 
-private:
+    // MD event pub/sub (O(1) by type_id)
+    static constexpr uint32_t MAX_MD_TYPE = 600;
+    static int  md_subscribe_before(uint32_t type_id, EventCallback callback, void* userdata = nullptr);
+    static int  md_subscribe_after(uint32_t type_id, EventCallback callback, void* userdata = nullptr);
+    static void md_fire_before(uint32_t type_id, void* payload);  // called by hook detour
+    static void md_fire_after(uint32_t type_id, void* payload);
+
+
     struct Subscription {
         int            id;
         EventCallback  callback;
@@ -40,6 +42,8 @@ private:
     };
 
     static std::unordered_map<std::string, std::vector<Subscription>> s_subscribers;
+    static std::array<std::vector<Subscription>, MAX_MD_TYPE> s_md_before;
+    static std::array<std::vector<Subscription>, MAX_MD_TYPE> s_md_after;
     static std::mutex s_mutex;
     static int        s_next_id;
 };
