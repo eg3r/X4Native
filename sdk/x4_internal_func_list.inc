@@ -144,6 +144,14 @@ X4_FUNC(bool, SetCommander, (UniverseID controllableid, UniverseID commanderid, 
 // Verified: v9.00 build 603098, RVA 0x001C5FC0
 X4_FUNC(void, SetAssignment, (UniverseID controllableid, const char* assignment))
 
+// GetFactionBuildMethod — returns a faction's effective production method.
+// Resolves: faction → buildrules override → primary race default → "default".
+// PE export (ordinal 617) with no FFI signature. Signature derived via IDA decompilation.
+// Returns method string: "default", "terran", "xenon", "teladi", "paranid", "split",
+// "boron", "closedloop". Used by MRP for BOM explosion to select correct ware recipes.
+// Verified: v9.00 build 603098, RVA 0x00194D40
+X4_FUNC(const char*, GetFactionBuildMethod, (const char* factionid))
+
 // EventQueue_InsertOrDispatch — central MD event dispatch funnel.
 // ALL MD events (1245+ call sites) pass through this function. If immediate==true
 // and timestamp <= current_time + epsilon, dispatches immediately to cue listeners.

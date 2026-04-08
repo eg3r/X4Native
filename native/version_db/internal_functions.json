@@ -280,6 +280,21 @@
       },
       "900-603098": { "rva": "0x001C5FC0" }
     },
+    "GetFactionBuildMethod": {
+      "_find_hints": {
+        "method": "pe_export",
+        "steps": [
+          "1. PE export 'GetFactionBuildMethod' — resolve via GetProcAddress or PE export table (ordinal 617)",
+          "2. Listed in x4_game_func_table.h untyped exports (no FFI signature, RE-derived)",
+          "3. Verify: takes 1 param (const char* factionid), returns const char* method string",
+          "4. Verify: resolves faction → buildrules override → primary race → 'default' fallback"
+        ],
+        "verify_strings": ["GetFactionBuildMethod"],
+        "byte_sig": "48 83 EC 28 4C 8B C9 48 85 C9 75 18 48 8D 0D",
+        "byte_sig_note": "First 15 bytes of prologue: sub rsp,28h; mov r9,rcx; test rcx,rcx; jne +18h; lea rcx,[rip+...]. Null-check guard on factionid param."
+      },
+      "900-603098": { "rva": "0x00194D40" }
+    },
     "EventQueue_InsertOrDispatch": {
       "_find_hints": {
         "method": "caller_chain",
