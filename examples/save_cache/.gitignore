@@ -1,0 +1,6 @@
+# Rust build artifacts
+tools/x4bin-writer/target/
+
+# Generated cache files
+*.x4bin
+*.x4bin.tmp

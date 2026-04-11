@@ -159,3 +159,30 @@ X4_FUNC(const char*, GetFactionBuildMethod, (const char* factionid))
 // Hooked by X4Native core to fire on_md_before/on_md_after per event type_id.
 // Verified: v9.00 build 603098, RVA 0x00958390
 X4_FUNC(void, EventQueue_InsertOrDispatch, (void* event_source, void* event_object, double timestamp, char immediate))
+
+// libxml2_ReadFile — embedded libxml2 xmlReadFile (statically linked).
+// Opens file (via custom I/O or direct open), calls xmlParseFile, returns DOM.
+// ~196 bytes. Contains the distinctive typo "filaed to open %s" from libxml2 source.
+// Takes: filename = path to XML or XML.GZ file (libxml2 handles gzip natively).
+// Returns: xmlDocPtr (opaque pointer to libxml2 document tree), or nullptr.
+// 49+ callers: every XMLDocBase::Load template instantiation, including SaveXML.
+// Used by save_cache example for binary DOM cache interception.
+// Verified: v9.00 build 604402, RVA 0x012965B0
+X4_FUNC(void*, libxml2_ReadFile, (const char* filename))
+
+// UniverseClass_Import — creates the galaxy, all clusters/sectors/zones, all game objects.
+// Called once from GameClass::Load during first pass. ~7068 bytes, 422 basic blocks.
+// The single most expensive function in the save load path.
+// Verified: v9.00 build 604402, RVA 0x0089AE80
+X4_FUNC(char, UniverseClass_Import, (void* a1, void* a2, void* a3, unsigned int* a4, unsigned int a5))
+
+// AIDirector_LoadScripts — loads AI script XML files from aiscripts/ directory.
+// Called 3 times from GameClass::Load. Loops over scripts, calls LoadAIScript each.
+// Verified: v9.00 build 604402, RVA 0x0101C5D0
+X4_FUNC(void, AIDirector_LoadScripts, (void* ai_director, void* a2))
+
+// AIDirector_Import — restores all entity AI script state from savegame XML.
+// 4804 bytes, 369 basic blocks. Processes 39K+ entity script stacks with 1M+ variables.
+// Called once from GameClass::Load second pass. The single biggest time consumer.
+// Verified: v9.00 build 604402, RVA 0x0101D6C0
+X4_FUNC(char, AIDirector_Import, (void* ai_director, void* xml_node, void* a3, int a4))

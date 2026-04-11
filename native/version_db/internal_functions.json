@@ -350,6 +350,59 @@
       "900-603098": { "rva": "0x00958390" },
       "900-603990": { "rva": "0x00959960" },
       "900-604402": { "rva": "0x009599C0" }
+    },
+    "libxml2_ReadFile": {
+      "_find_hints": {
+        "method": "unique_string",
+        "steps": [
+          "1. Search for the typo string 'filaed to open %s' — unique in the binary",
+          "2. The containing function is the raw libxml2 xmlReadFile",
+          "3. Verify: ~196 bytes, takes 1 arg (const char* filename), returns xmlDocPtr",
+          "4. Verify: 49+ callers (all XMLDocBase::Load template instantiations)",
+          "5. Calls sub_141296300 (xmlParseFile) which does the actual parsing"
+        ],
+        "verify_strings": ["filaed to open %s", "failed to open %s"],
+        "byte_sig_note": "Small function ~196 bytes. Look for 'filaed to open' typo (libxml2 original)."
+      },
+      "900-604402": { "rva": "0x012965B0" }
+    },
+    "UniverseClass_Import": {
+      "_find_hints": {
+        "method": "unique_string",
+        "steps": [
+          "1. Search for 'UniverseClass::Import(): Invalid savegame. Failed creating galaxy.'",
+          "2. The containing function is UniverseClass::Import",
+          "3. Verify: ~7068 bytes, exactly 1 caller (GameClass::Load)",
+          "4. Also references 'UniverseClass::Import(): Invalid savegame. Galaxy not found.'"
+        ],
+        "verify_strings": ["UniverseClass::Import(): Invalid savegame. Failed creating galaxy."]
+      },
+      "900-604402": { "rva": "0x0089AE80" }
+    },
+    "AIDirector_LoadScripts": {
+      "_find_hints": {
+        "method": "structural",
+        "steps": [
+          "1. Contains string 'aiscripts' (literal in function body)",
+          "2. Calls LoadAIScript (sub_14101CF70) in a loop over a vector of 40-byte entries",
+          "3. ~547 bytes, 3 callers from GameClass::Load",
+          "4. Verify: loads .xml files from aiscripts/ directory via sub_1411F72A0"
+        ]
+      },
+      "900-604402": { "rva": "0x0101C5D0" }
+    },
+    "AIDirector_Import": {
+      "_find_hints": {
+        "method": "unique_string",
+        "steps": [
+          "1. Search for 'Error on AI director import: Could not find entity %s'",
+          "2. The containing function is the AI Director entity/script state restorer",
+          "3. ~4804 bytes, 369 basic blocks, 40-case switch for XML tags",
+          "4. Verify: 1 caller (GameClass::Load), references many AIDirector error strings"
+        ],
+        "verify_strings": ["Error on AI director import: Could not find entity %s"]
+      },
+      "900-604402": { "rva": "0x0101D6C0" }
     }
   }
 }

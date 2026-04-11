@@ -1,0 +1,7 @@
+{
+    "name": "save_cache",
+    "library": "native\\x4native_save_cache.dll",
+    "priority": 10,
+    "min_api_version": 1,
+    "autoreload": false
+}

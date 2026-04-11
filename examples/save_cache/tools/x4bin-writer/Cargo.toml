@@ -1,0 +1,14 @@
+[package]
+name = "x4bin-writer"
+version = "0.1.0"
+edition = "2021"
+description = "Convert X4 savegame .xml.gz to .x4bin binary DOM cache"
+
+[dependencies]
+flate2 = "1"
+quick-xml = { version = "0.37", features = ["serialize"] }
+sha2 = "0.10"
+
+[profile.release]
+opt-level = 3
+lto = true
