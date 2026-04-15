@@ -1497,6 +1497,7 @@ typedef uint64_t AIOrderID;
 	void SetMapRenderMissionGuidance(UniverseID holomapid, MissionID missionid);
 	void SetMapRenderMissionOffers(UniverseID holomapid, bool value);
 	void SetMapRenderResourceInfo(UniverseID holomapid, bool value);
+	void SetMapRenderResourceProbeRange(UniverseID holomapid, bool value);
 	void SetMapRenderSatelliteRadarRange(UniverseID holomapid, bool value);
 	void SetMapRenderSelectionLines(UniverseID holomapid, bool value);
 	void SetMapRenderTradeOffers(UniverseID holomapid, bool value);

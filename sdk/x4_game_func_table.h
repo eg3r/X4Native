@@ -1,7 +1,7 @@
 // ==========================================================================
 // x4_game_func_table.h - X4 Game Function Pointer Table
 // ==========================================================================
-// Auto-generated from X4 v9.00-604402 FFI declarations.
+// Auto-generated from X4 v9.00-605025 FFI declarations.
 //
 // The X4GameFunctions struct provides compile-time type-safe access to
 // resolved game function pointers. Populated at runtime via GetProcAddress.
@@ -21,7 +21,7 @@ extern "C" {
 #endif
 
 // --------------------------------------------------------------------------
-// Function Pointer Table (2053 entries)
+// Function Pointer Table (2054 entries)
 // --------------------------------------------------------------------------
 
 #define X4_FUNC(ret, name, params) ret (*name) params;

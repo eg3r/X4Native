@@ -2,7 +2,7 @@
 // x4_md_events.h - Typed MD Event Subscription API
 // ==========================================================================
 // Auto-generated from event_type_ids.csv + event_layouts.csv + common.xsd
-// Game version: 900-604402
+// Game version: 900-605025
 //
 // Usage:
 //   x4n::md::on_sector_changed_owner_before([](const x4n::md::SectorChangedOwnerData& e) {
@@ -560,7 +560,7 @@ namespace x4n::md
         double   timestamp;         // Game time (X4MdEvent)
         uint64_t station;
         uint64_t old_build_plot_max;
-        uint32_t old_build_plot_center;
+        uint64_t old_build_plot_center;
 
         static BuildPlotChangedData from(const X4MdEvent* ev) {
             auto* p = static_cast<const uint8_t*>(ev->raw_event);
@@ -569,7 +569,7 @@ namespace x4n::md
                 ev->timestamp,
                 *reinterpret_cast<const uint64_t*>(p + 0x18),
                 *reinterpret_cast<const uint64_t*>(p + 0x20),
-                *reinterpret_cast<const uint32_t*>(p + 0x40)
+                *reinterpret_cast<const uint64_t*>(p + 0x30)
             };
         }
     };
@@ -1475,15 +1475,13 @@ namespace x4n::md
         uint64_t source_id;        // Event source entity (X4MdEvent)
         double   timestamp;         // Game time (X4MdEvent)
         uint64_t cutscene_key_string;
-        uint32_t cutscene_id;
 
         static CutsceneStartedData from(const X4MdEvent* ev) {
             auto* p = static_cast<const uint8_t*>(ev->raw_event);
             return {
                 ev->source_id,
                 ev->timestamp,
-                *reinterpret_cast<const uint64_t*>(p + 0x18),
-                *reinterpret_cast<const uint32_t*>(p + 0x77)
+                *reinterpret_cast<const uint64_t*>(p + 0x18)
             };
         }
     };
@@ -2937,13 +2935,15 @@ namespace x4n::md
         uint64_t source_id;        // Event source entity (X4MdEvent)
         double   timestamp;         // Game time (X4MdEvent)
         uint64_t repaired_component;
+        uint8_t new_hull_value;
 
         static HullRepairedData from(const X4MdEvent* ev) {
             auto* p = static_cast<const uint8_t*>(ev->raw_event);
             return {
                 ev->source_id,
                 ev->timestamp,
-                *reinterpret_cast<const uint64_t*>(p + 0x18)
+                *reinterpret_cast<const uint64_t*>(p + 0x18),
+                *reinterpret_cast<const uint8_t*>(p + 0x40)
             };
         }
     };
@@ -5398,12 +5398,12 @@ namespace x4n::md
     };
 
     inline int on_resource_probe_launched_before(void(*cb)(const ResourceProbeLaunchedData&)) {
-        return detail::subscribe_before(396, detail::trampoline<ResourceProbeLaunchedData>,
+        return detail::subscribe_before(397, detail::trampoline<ResourceProbeLaunchedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_resource_probe_launched_after(void(*cb)(const ResourceProbeLaunchedData&)) {
-        return detail::subscribe_after(396, detail::trampoline<ResourceProbeLaunchedData>,
+        return detail::subscribe_after(397, detail::trampoline<ResourceProbeLaunchedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -5426,12 +5426,12 @@ namespace x4n::md
     };
 
     inline int on_retrieved_from_internal_storage_before(void(*cb)(const RetrievedFromInternalStorageData&)) {
-        return detail::subscribe_before(400, detail::trampoline<RetrievedFromInternalStorageData>,
+        return detail::subscribe_before(401, detail::trampoline<RetrievedFromInternalStorageData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_retrieved_from_internal_storage_after(void(*cb)(const RetrievedFromInternalStorageData&)) {
-        return detail::subscribe_after(400, detail::trampoline<RetrievedFromInternalStorageData>,
+        return detail::subscribe_after(401, detail::trampoline<RetrievedFromInternalStorageData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -5454,12 +5454,12 @@ namespace x4n::md
     };
 
     inline int on_salvage_claim_lost_before(void(*cb)(const SalvageClaimLostData&)) {
-        return detail::subscribe_before(402, detail::trampoline<SalvageClaimLostData>,
+        return detail::subscribe_before(403, detail::trampoline<SalvageClaimLostData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_salvage_claim_lost_after(void(*cb)(const SalvageClaimLostData&)) {
-        return detail::subscribe_after(402, detail::trampoline<SalvageClaimLostData>,
+        return detail::subscribe_after(403, detail::trampoline<SalvageClaimLostData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -5482,12 +5482,12 @@ namespace x4n::md
     };
 
     inline int on_satellite_launched_before(void(*cb)(const SatelliteLaunchedData&)) {
-        return detail::subscribe_before(403, detail::trampoline<SatelliteLaunchedData>,
+        return detail::subscribe_before(404, detail::trampoline<SatelliteLaunchedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_satellite_launched_after(void(*cb)(const SatelliteLaunchedData&)) {
-        return detail::subscribe_after(403, detail::trampoline<SatelliteLaunchedData>,
+        return detail::subscribe_after(404, detail::trampoline<SatelliteLaunchedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -5510,12 +5510,12 @@ namespace x4n::md
     };
 
     inline int on_scan_aborted_before(void(*cb)(const ScanAbortedData&)) {
-        return detail::subscribe_before(404, detail::trampoline<ScanAbortedData>,
+        return detail::subscribe_before(405, detail::trampoline<ScanAbortedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_scan_aborted_after(void(*cb)(const ScanAbortedData&)) {
-        return detail::subscribe_after(404, detail::trampoline<ScanAbortedData>,
+        return detail::subscribe_after(405, detail::trampoline<ScanAbortedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -5538,12 +5538,12 @@ namespace x4n::md
     };
 
     inline int on_scan_finished_before(void(*cb)(const ScanFinishedData&)) {
-        return detail::subscribe_before(405, detail::trampoline<ScanFinishedData>,
+        return detail::subscribe_before(406, detail::trampoline<ScanFinishedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_scan_finished_after(void(*cb)(const ScanFinishedData&)) {
-        return detail::subscribe_after(405, detail::trampoline<ScanFinishedData>,
+        return detail::subscribe_after(406, detail::trampoline<ScanFinishedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -5566,12 +5566,12 @@ namespace x4n::md
     };
 
     inline int on_scan_started_before(void(*cb)(const ScanStartedData&)) {
-        return detail::subscribe_before(406, detail::trampoline<ScanStartedData>,
+        return detail::subscribe_before(407, detail::trampoline<ScanStartedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_scan_started_after(void(*cb)(const ScanStartedData&)) {
-        return detail::subscribe_after(406, detail::trampoline<ScanStartedData>,
+        return detail::subscribe_after(407, detail::trampoline<ScanStartedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -5596,12 +5596,12 @@ namespace x4n::md
     };
 
     inline int on_sector_changed_owner_before(void(*cb)(const SectorChangedOwnerData&)) {
-        return detail::subscribe_before(409, detail::trampoline<SectorChangedOwnerData>,
+        return detail::subscribe_before(410, detail::trampoline<SectorChangedOwnerData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_sector_changed_owner_after(void(*cb)(const SectorChangedOwnerData&)) {
-        return detail::subscribe_after(409, detail::trampoline<SectorChangedOwnerData>,
+        return detail::subscribe_after(410, detail::trampoline<SectorChangedOwnerData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -5626,12 +5626,12 @@ namespace x4n::md
     };
 
     inline int on_sector_changed_true_owner_before(void(*cb)(const SectorChangedTrueOwnerData&)) {
-        return detail::subscribe_before(410, detail::trampoline<SectorChangedTrueOwnerData>,
+        return detail::subscribe_before(411, detail::trampoline<SectorChangedTrueOwnerData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_sector_changed_true_owner_after(void(*cb)(const SectorChangedTrueOwnerData&)) {
-        return detail::subscribe_after(410, detail::trampoline<SectorChangedTrueOwnerData>,
+        return detail::subscribe_after(411, detail::trampoline<SectorChangedTrueOwnerData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -5658,12 +5658,12 @@ namespace x4n::md
     };
 
     inline int on_sector_resource_depleted_before(void(*cb)(const SectorResourceDepletedData&)) {
-        return detail::subscribe_before(412, detail::trampoline<SectorResourceDepletedData>,
+        return detail::subscribe_before(413, detail::trampoline<SectorResourceDepletedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_sector_resource_depleted_after(void(*cb)(const SectorResourceDepletedData&)) {
-        return detail::subscribe_after(412, detail::trampoline<SectorResourceDepletedData>,
+        return detail::subscribe_after(413, detail::trampoline<SectorResourceDepletedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -5688,12 +5688,12 @@ namespace x4n::md
     };
 
     inline int on_shield_damaged_before(void(*cb)(const ShieldDamagedData&)) {
-        return detail::subscribe_before(419, detail::trampoline<ShieldDamagedData>,
+        return detail::subscribe_before(420, detail::trampoline<ShieldDamagedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_shield_damaged_after(void(*cb)(const ShieldDamagedData&)) {
-        return detail::subscribe_after(419, detail::trampoline<ShieldDamagedData>,
+        return detail::subscribe_after(420, detail::trampoline<ShieldDamagedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -5714,12 +5714,12 @@ namespace x4n::md
     };
 
     inline int on_signal_unlock_failed_before(void(*cb)(const SignalUnlockFailedData&)) {
-        return detail::subscribe_before(427, detail::trampoline<SignalUnlockFailedData>,
+        return detail::subscribe_before(428, detail::trampoline<SignalUnlockFailedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_signal_unlock_failed_after(void(*cb)(const SignalUnlockFailedData&)) {
-        return detail::subscribe_after(427, detail::trampoline<SignalUnlockFailedData>,
+        return detail::subscribe_after(428, detail::trampoline<SignalUnlockFailedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -5742,12 +5742,12 @@ namespace x4n::md
     };
 
     inline int on_signal_unlock_finished_before(void(*cb)(const SignalUnlockFinishedData&)) {
-        return detail::subscribe_before(428, detail::trampoline<SignalUnlockFinishedData>,
+        return detail::subscribe_before(429, detail::trampoline<SignalUnlockFinishedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_signal_unlock_finished_after(void(*cb)(const SignalUnlockFinishedData&)) {
-        return detail::subscribe_after(428, detail::trampoline<SignalUnlockFinishedData>,
+        return detail::subscribe_after(429, detail::trampoline<SignalUnlockFinishedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -5768,12 +5768,12 @@ namespace x4n::md
     };
 
     inline int on_signal_unlock_impossible_before(void(*cb)(const SignalUnlockImpossibleData&)) {
-        return detail::subscribe_before(429, detail::trampoline<SignalUnlockImpossibleData>,
+        return detail::subscribe_before(430, detail::trampoline<SignalUnlockImpossibleData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_signal_unlock_impossible_after(void(*cb)(const SignalUnlockImpossibleData&)) {
-        return detail::subscribe_after(429, detail::trampoline<SignalUnlockImpossibleData>,
+        return detail::subscribe_after(430, detail::trampoline<SignalUnlockImpossibleData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -5794,12 +5794,12 @@ namespace x4n::md
     };
 
     inline int on_signal_unlock_started_before(void(*cb)(const SignalUnlockStartedData&)) {
-        return detail::subscribe_before(430, detail::trampoline<SignalUnlockStartedData>,
+        return detail::subscribe_before(431, detail::trampoline<SignalUnlockStartedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_signal_unlock_started_after(void(*cb)(const SignalUnlockStartedData&)) {
-        return detail::subscribe_after(430, detail::trampoline<SignalUnlockStartedData>,
+        return detail::subscribe_after(431, detail::trampoline<SignalUnlockStartedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -5822,12 +5822,12 @@ namespace x4n::md
     };
 
     inline int on_space_reservation_expired_before(void(*cb)(const SpaceReservationExpiredData&)) {
-        return detail::subscribe_before(431, detail::trampoline<SpaceReservationExpiredData>,
+        return detail::subscribe_before(432, detail::trampoline<SpaceReservationExpiredData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_space_reservation_expired_after(void(*cb)(const SpaceReservationExpiredData&)) {
-        return detail::subscribe_after(431, detail::trampoline<SpaceReservationExpiredData>,
+        return detail::subscribe_after(432, detail::trampoline<SpaceReservationExpiredData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -5852,12 +5852,12 @@ namespace x4n::md
     };
 
     inline int on_speak_finished_before(void(*cb)(const SpeakFinishedData&)) {
-        return detail::subscribe_before(433, detail::trampoline<SpeakFinishedData>,
+        return detail::subscribe_before(434, detail::trampoline<SpeakFinishedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_speak_finished_after(void(*cb)(const SpeakFinishedData&)) {
-        return detail::subscribe_after(433, detail::trampoline<SpeakFinishedData>,
+        return detail::subscribe_after(434, detail::trampoline<SpeakFinishedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -5880,12 +5880,12 @@ namespace x4n::md
     };
 
     inline int on_speak_line_finished_before(void(*cb)(const SpeakLineFinishedData&)) {
-        return detail::subscribe_before(434, detail::trampoline<SpeakLineFinishedData>,
+        return detail::subscribe_before(435, detail::trampoline<SpeakLineFinishedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_speak_line_finished_after(void(*cb)(const SpeakLineFinishedData&)) {
-        return detail::subscribe_after(434, detail::trampoline<SpeakLineFinishedData>,
+        return detail::subscribe_after(435, detail::trampoline<SpeakLineFinishedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -5910,12 +5910,12 @@ namespace x4n::md
     };
 
     inline int on_speak_timer_triggered_before(void(*cb)(const SpeakTimerTriggeredData&)) {
-        return detail::subscribe_before(435, detail::trampoline<SpeakTimerTriggeredData>,
+        return detail::subscribe_before(436, detail::trampoline<SpeakTimerTriggeredData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_speak_timer_triggered_after(void(*cb)(const SpeakTimerTriggeredData&)) {
-        return detail::subscribe_after(435, detail::trampoline<SpeakTimerTriggeredData>,
+        return detail::subscribe_after(436, detail::trampoline<SpeakTimerTriggeredData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -5936,12 +5936,12 @@ namespace x4n::md
     };
 
     inline int on_stance_activated_before(void(*cb)(const StanceActivatedData&)) {
-        return detail::subscribe_before(436, detail::trampoline<StanceActivatedData>,
+        return detail::subscribe_before(437, detail::trampoline<StanceActivatedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_stance_activated_after(void(*cb)(const StanceActivatedData&)) {
-        return detail::subscribe_after(436, detail::trampoline<StanceActivatedData>,
+        return detail::subscribe_after(437, detail::trampoline<StanceActivatedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -5964,12 +5964,12 @@ namespace x4n::md
     };
 
     inline int on_subordinate_added_before(void(*cb)(const SubordinateAddedData&)) {
-        return detail::subscribe_before(455, detail::trampoline<SubordinateAddedData>,
+        return detail::subscribe_before(456, detail::trampoline<SubordinateAddedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_subordinate_added_after(void(*cb)(const SubordinateAddedData&)) {
-        return detail::subscribe_after(455, detail::trampoline<SubordinateAddedData>,
+        return detail::subscribe_after(456, detail::trampoline<SubordinateAddedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -5990,12 +5990,12 @@ namespace x4n::md
     };
 
     inline int on_subordinate_promoted_before(void(*cb)(const SubordinatePromotedData&)) {
-        return detail::subscribe_before(456, detail::trampoline<SubordinatePromotedData>,
+        return detail::subscribe_before(457, detail::trampoline<SubordinatePromotedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_subordinate_promoted_after(void(*cb)(const SubordinatePromotedData&)) {
-        return detail::subscribe_after(456, detail::trampoline<SubordinatePromotedData>,
+        return detail::subscribe_after(457, detail::trampoline<SubordinatePromotedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6018,12 +6018,12 @@ namespace x4n::md
     };
 
     inline int on_subordinate_removed_before(void(*cb)(const SubordinateRemovedData&)) {
-        return detail::subscribe_before(457, detail::trampoline<SubordinateRemovedData>,
+        return detail::subscribe_before(458, detail::trampoline<SubordinateRemovedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_subordinate_removed_after(void(*cb)(const SubordinateRemovedData&)) {
-        return detail::subscribe_after(457, detail::trampoline<SubordinateRemovedData>,
+        return detail::subscribe_after(458, detail::trampoline<SubordinateRemovedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6046,12 +6046,12 @@ namespace x4n::md
     };
 
     inline int on_target_invalid_before(void(*cb)(const TargetInvalidData&)) {
-        return detail::subscribe_before(463, detail::trampoline<TargetInvalidData>,
+        return detail::subscribe_before(464, detail::trampoline<TargetInvalidData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_target_invalid_after(void(*cb)(const TargetInvalidData&)) {
-        return detail::subscribe_after(463, detail::trampoline<TargetInvalidData>,
+        return detail::subscribe_after(464, detail::trampoline<TargetInvalidData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6074,12 +6074,12 @@ namespace x4n::md
     };
 
     inline int on_teleport_failed_before(void(*cb)(const TeleportFailedData&)) {
-        return detail::subscribe_before(466, detail::trampoline<TeleportFailedData>,
+        return detail::subscribe_before(467, detail::trampoline<TeleportFailedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_teleport_failed_after(void(*cb)(const TeleportFailedData&)) {
-        return detail::subscribe_after(466, detail::trampoline<TeleportFailedData>,
+        return detail::subscribe_after(467, detail::trampoline<TeleportFailedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6104,12 +6104,12 @@ namespace x4n::md
     };
 
     inline int on_teleport_successful_before(void(*cb)(const TeleportSuccessfulData&)) {
-        return detail::subscribe_before(467, detail::trampoline<TeleportSuccessfulData>,
+        return detail::subscribe_before(468, detail::trampoline<TeleportSuccessfulData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_teleport_successful_after(void(*cb)(const TeleportSuccessfulData&)) {
-        return detail::subscribe_after(467, detail::trampoline<TeleportSuccessfulData>,
+        return detail::subscribe_after(468, detail::trampoline<TeleportSuccessfulData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6130,12 +6130,12 @@ namespace x4n::md
     };
 
     inline int on_terraforming_event_completed_before(void(*cb)(const TerraformingEventCompletedData&)) {
-        return detail::subscribe_before(473, detail::trampoline<TerraformingEventCompletedData>,
+        return detail::subscribe_before(474, detail::trampoline<TerraformingEventCompletedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_terraforming_event_completed_after(void(*cb)(const TerraformingEventCompletedData&)) {
-        return detail::subscribe_after(473, detail::trampoline<TerraformingEventCompletedData>,
+        return detail::subscribe_after(474, detail::trampoline<TerraformingEventCompletedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6150,18 +6150,18 @@ namespace x4n::md
             return {
                 ev->source_id,
                 ev->timestamp,
-                *reinterpret_cast<const uint64_t*>(p + 0x18)
+                *reinterpret_cast<const uint64_t*>(p + 0x48)
             };
         }
     };
 
     inline int on_terraforming_event_started_before(void(*cb)(const TerraformingEventStartedData&)) {
-        return detail::subscribe_before(474, detail::trampoline<TerraformingEventStartedData>,
+        return detail::subscribe_before(475, detail::trampoline<TerraformingEventStartedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_terraforming_event_started_after(void(*cb)(const TerraformingEventStartedData&)) {
-        return detail::subscribe_after(474, detail::trampoline<TerraformingEventStartedData>,
+        return detail::subscribe_after(475, detail::trampoline<TerraformingEventStartedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6173,12 +6173,12 @@ namespace x4n::md
     };
 
     inline int on_terraforming_habitability_changed_before(void(*cb)(const TerraformingHabitabilityChangedData&)) {
-        return detail::subscribe_before(475, detail::trampoline<TerraformingHabitabilityChangedData>,
+        return detail::subscribe_before(476, detail::trampoline<TerraformingHabitabilityChangedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_terraforming_habitability_changed_after(void(*cb)(const TerraformingHabitabilityChangedData&)) {
-        return detail::subscribe_after(475, detail::trampoline<TerraformingHabitabilityChangedData>,
+        return detail::subscribe_after(476, detail::trampoline<TerraformingHabitabilityChangedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6199,12 +6199,12 @@ namespace x4n::md
     };
 
     inline int on_terraforming_project_available_before(void(*cb)(const TerraformingProjectAvailableData&)) {
-        return detail::subscribe_before(476, detail::trampoline<TerraformingProjectAvailableData>,
+        return detail::subscribe_before(477, detail::trampoline<TerraformingProjectAvailableData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_terraforming_project_available_after(void(*cb)(const TerraformingProjectAvailableData&)) {
-        return detail::subscribe_after(476, detail::trampoline<TerraformingProjectAvailableData>,
+        return detail::subscribe_after(477, detail::trampoline<TerraformingProjectAvailableData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6225,12 +6225,12 @@ namespace x4n::md
     };
 
     inline int on_terraforming_project_completed_before(void(*cb)(const TerraformingProjectCompletedData&)) {
-        return detail::subscribe_before(477, detail::trampoline<TerraformingProjectCompletedData>,
+        return detail::subscribe_before(478, detail::trampoline<TerraformingProjectCompletedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_terraforming_project_completed_after(void(*cb)(const TerraformingProjectCompletedData&)) {
-        return detail::subscribe_after(477, detail::trampoline<TerraformingProjectCompletedData>,
+        return detail::subscribe_after(478, detail::trampoline<TerraformingProjectCompletedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6253,12 +6253,12 @@ namespace x4n::md
     };
 
     inline int on_terraforming_project_failed_before(void(*cb)(const TerraformingProjectFailedData&)) {
-        return detail::subscribe_before(478, detail::trampoline<TerraformingProjectFailedData>,
+        return detail::subscribe_before(479, detail::trampoline<TerraformingProjectFailedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_terraforming_project_failed_after(void(*cb)(const TerraformingProjectFailedData&)) {
-        return detail::subscribe_after(478, detail::trampoline<TerraformingProjectFailedData>,
+        return detail::subscribe_after(479, detail::trampoline<TerraformingProjectFailedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6279,12 +6279,12 @@ namespace x4n::md
     };
 
     inline int on_terraforming_project_started_before(void(*cb)(const TerraformingProjectStartedData&)) {
-        return detail::subscribe_before(480, detail::trampoline<TerraformingProjectStartedData>,
+        return detail::subscribe_before(481, detail::trampoline<TerraformingProjectStartedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_terraforming_project_started_after(void(*cb)(const TerraformingProjectStartedData&)) {
-        return detail::subscribe_after(480, detail::trampoline<TerraformingProjectStartedData>,
+        return detail::subscribe_after(481, detail::trampoline<TerraformingProjectStartedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6311,12 +6311,12 @@ namespace x4n::md
     };
 
     inline int on_terraforming_project_succeeded_before(void(*cb)(const TerraformingProjectSucceededData&)) {
-        return detail::subscribe_before(481, detail::trampoline<TerraformingProjectSucceededData>,
+        return detail::subscribe_before(482, detail::trampoline<TerraformingProjectSucceededData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_terraforming_project_succeeded_after(void(*cb)(const TerraformingProjectSucceededData&)) {
-        return detail::subscribe_after(481, detail::trampoline<TerraformingProjectSucceededData>,
+        return detail::subscribe_after(482, detail::trampoline<TerraformingProjectSucceededData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6337,12 +6337,12 @@ namespace x4n::md
     };
 
     inline int on_terraforming_stat_added_before(void(*cb)(const TerraformingStatAddedData&)) {
-        return detail::subscribe_before(482, detail::trampoline<TerraformingStatAddedData>,
+        return detail::subscribe_before(483, detail::trampoline<TerraformingStatAddedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_terraforming_stat_added_after(void(*cb)(const TerraformingStatAddedData&)) {
-        return detail::subscribe_after(482, detail::trampoline<TerraformingStatAddedData>,
+        return detail::subscribe_after(483, detail::trampoline<TerraformingStatAddedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6363,12 +6363,12 @@ namespace x4n::md
     };
 
     inline int on_terraforming_stat_changed_before(void(*cb)(const TerraformingStatChangedData&)) {
-        return detail::subscribe_before(483, detail::trampoline<TerraformingStatChangedData>,
+        return detail::subscribe_before(484, detail::trampoline<TerraformingStatChangedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_terraforming_stat_changed_after(void(*cb)(const TerraformingStatChangedData&)) {
-        return detail::subscribe_after(483, detail::trampoline<TerraformingStatChangedData>,
+        return detail::subscribe_after(484, detail::trampoline<TerraformingStatChangedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6389,12 +6389,12 @@ namespace x4n::md
     };
 
     inline int on_terraforming_stat_removed_before(void(*cb)(const TerraformingStatRemovedData&)) {
-        return detail::subscribe_before(484, detail::trampoline<TerraformingStatRemovedData>,
+        return detail::subscribe_before(485, detail::trampoline<TerraformingStatRemovedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_terraforming_stat_removed_after(void(*cb)(const TerraformingStatRemovedData&)) {
-        return detail::subscribe_after(484, detail::trampoline<TerraformingStatRemovedData>,
+        return detail::subscribe_after(485, detail::trampoline<TerraformingStatRemovedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6415,12 +6415,12 @@ namespace x4n::md
     };
 
     inline int on_trade_cancelled_before(void(*cb)(const TradeCancelledData&)) {
-        return detail::subscribe_before(489, detail::trampoline<TradeCancelledData>,
+        return detail::subscribe_before(490, detail::trampoline<TradeCancelledData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_trade_cancelled_after(void(*cb)(const TradeCancelledData&)) {
-        return detail::subscribe_after(489, detail::trampoline<TradeCancelledData>,
+        return detail::subscribe_after(490, detail::trampoline<TradeCancelledData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6443,12 +6443,12 @@ namespace x4n::md
     };
 
     inline int on_trade_completed_before(void(*cb)(const TradeCompletedData&)) {
-        return detail::subscribe_before(493, detail::trampoline<TradeCompletedData>,
+        return detail::subscribe_before(494, detail::trampoline<TradeCompletedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_trade_completed_after(void(*cb)(const TradeCompletedData&)) {
-        return detail::subscribe_after(493, detail::trampoline<TradeCompletedData>,
+        return detail::subscribe_after(494, detail::trampoline<TradeCompletedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6471,12 +6471,12 @@ namespace x4n::md
     };
 
     inline int on_trade_started_before(void(*cb)(const TradeStartedData&)) {
-        return detail::subscribe_before(494, detail::trampoline<TradeStartedData>,
+        return detail::subscribe_before(495, detail::trampoline<TradeStartedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_trade_started_after(void(*cb)(const TradeStartedData&)) {
-        return detail::subscribe_after(494, detail::trampoline<TradeStartedData>,
+        return detail::subscribe_after(495, detail::trampoline<TradeStartedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6499,12 +6499,12 @@ namespace x4n::md
     };
 
     inline int on_traffic_level_changed_before(void(*cb)(const TrafficLevelChangedData&)) {
-        return detail::subscribe_before(495, detail::trampoline<TrafficLevelChangedData>,
+        return detail::subscribe_before(496, detail::trampoline<TrafficLevelChangedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_traffic_level_changed_after(void(*cb)(const TrafficLevelChangedData&)) {
-        return detail::subscribe_after(495, detail::trampoline<TrafficLevelChangedData>,
+        return detail::subscribe_after(496, detail::trampoline<TrafficLevelChangedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6516,12 +6516,12 @@ namespace x4n::md
     };
 
     inline int on_travel_mode_charge_aborted_before(void(*cb)(const TravelModeChargeAbortedData&)) {
-        return detail::subscribe_before(499, detail::trampoline<TravelModeChargeAbortedData>,
+        return detail::subscribe_before(500, detail::trampoline<TravelModeChargeAbortedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_travel_mode_charge_aborted_after(void(*cb)(const TravelModeChargeAbortedData&)) {
-        return detail::subscribe_after(499, detail::trampoline<TravelModeChargeAbortedData>,
+        return detail::subscribe_after(500, detail::trampoline<TravelModeChargeAbortedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6542,12 +6542,12 @@ namespace x4n::md
     };
 
     inline int on_travel_mode_charge_started_before(void(*cb)(const TravelModeChargeStartedData&)) {
-        return detail::subscribe_before(500, detail::trampoline<TravelModeChargeStartedData>,
+        return detail::subscribe_before(501, detail::trampoline<TravelModeChargeStartedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_travel_mode_charge_started_after(void(*cb)(const TravelModeChargeStartedData&)) {
-        return detail::subscribe_after(500, detail::trampoline<TravelModeChargeStartedData>,
+        return detail::subscribe_after(501, detail::trampoline<TravelModeChargeStartedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6559,12 +6559,12 @@ namespace x4n::md
     };
 
     inline int on_travel_mode_started_before(void(*cb)(const TravelModeStartedData&)) {
-        return detail::subscribe_before(501, detail::trampoline<TravelModeStartedData>,
+        return detail::subscribe_before(502, detail::trampoline<TravelModeStartedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_travel_mode_started_after(void(*cb)(const TravelModeStartedData&)) {
-        return detail::subscribe_after(501, detail::trampoline<TravelModeStartedData>,
+        return detail::subscribe_after(502, detail::trampoline<TravelModeStartedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6576,12 +6576,12 @@ namespace x4n::md
     };
 
     inline int on_travel_mode_stopped_before(void(*cb)(const TravelModeStoppedData&)) {
-        return detail::subscribe_before(502, detail::trampoline<TravelModeStoppedData>,
+        return detail::subscribe_before(503, detail::trampoline<TravelModeStoppedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_travel_mode_stopped_after(void(*cb)(const TravelModeStoppedData&)) {
-        return detail::subscribe_after(502, detail::trampoline<TravelModeStoppedData>,
+        return detail::subscribe_after(503, detail::trampoline<TravelModeStoppedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6606,12 +6606,12 @@ namespace x4n::md
     };
 
     inline int on_u_i_triggered_before(void(*cb)(const UITriggeredData&)) {
-        return detail::subscribe_before(508, detail::trampoline<UITriggeredData>,
+        return detail::subscribe_before(509, detail::trampoline<UITriggeredData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_u_i_triggered_after(void(*cb)(const UITriggeredData&)) {
-        return detail::subscribe_after(508, detail::trampoline<UITriggeredData>,
+        return detail::subscribe_after(509, detail::trampoline<UITriggeredData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6636,12 +6636,12 @@ namespace x4n::md
     };
 
     inline int on_undocked_before(void(*cb)(const UndockedData&)) {
-        return detail::subscribe_before(509, detail::trampoline<UndockedData>,
+        return detail::subscribe_before(510, detail::trampoline<UndockedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_undocked_after(void(*cb)(const UndockedData&)) {
-        return detail::subscribe_after(509, detail::trampoline<UndockedData>,
+        return detail::subscribe_after(510, detail::trampoline<UndockedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6653,12 +6653,12 @@ namespace x4n::md
     };
 
     inline int on_undocking_cleared_before(void(*cb)(const UndockingClearedData&)) {
-        return detail::subscribe_before(510, detail::trampoline<UndockingClearedData>,
+        return detail::subscribe_before(511, detail::trampoline<UndockingClearedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_undocking_cleared_after(void(*cb)(const UndockingClearedData&)) {
-        return detail::subscribe_after(510, detail::trampoline<UndockingClearedData>,
+        return detail::subscribe_after(511, detail::trampoline<UndockingClearedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6683,12 +6683,12 @@ namespace x4n::md
     };
 
     inline int on_undocking_started_before(void(*cb)(const UndockingStartedData&)) {
-        return detail::subscribe_before(512, detail::trampoline<UndockingStartedData>,
+        return detail::subscribe_before(513, detail::trampoline<UndockingStartedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_undocking_started_after(void(*cb)(const UndockingStartedData&)) {
-        return detail::subscribe_after(512, detail::trampoline<UndockingStartedData>,
+        return detail::subscribe_after(513, detail::trampoline<UndockingStartedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6711,12 +6711,12 @@ namespace x4n::md
     };
 
     inline int on_unit_destroyed_before(void(*cb)(const UnitDestroyedData&)) {
-        return detail::subscribe_before(513, detail::trampoline<UnitDestroyedData>,
+        return detail::subscribe_before(514, detail::trampoline<UnitDestroyedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_unit_destroyed_after(void(*cb)(const UnitDestroyedData&)) {
-        return detail::subscribe_after(513, detail::trampoline<UnitDestroyedData>,
+        return detail::subscribe_after(514, detail::trampoline<UnitDestroyedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6737,12 +6737,12 @@ namespace x4n::md
     };
 
     inline int on_unit_started_building_before(void(*cb)(const UnitStartedBuildingData&)) {
-        return detail::subscribe_before(514, detail::trampoline<UnitStartedBuildingData>,
+        return detail::subscribe_before(515, detail::trampoline<UnitStartedBuildingData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_unit_started_building_after(void(*cb)(const UnitStartedBuildingData&)) {
-        return detail::subscribe_after(514, detail::trampoline<UnitStartedBuildingData>,
+        return detail::subscribe_after(515, detail::trampoline<UnitStartedBuildingData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6763,12 +6763,12 @@ namespace x4n::md
     };
 
     inline int on_unit_started_repairing_before(void(*cb)(const UnitStartedRepairingData&)) {
-        return detail::subscribe_before(515, detail::trampoline<UnitStartedRepairingData>,
+        return detail::subscribe_before(516, detail::trampoline<UnitStartedRepairingData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_unit_started_repairing_after(void(*cb)(const UnitStartedRepairingData&)) {
-        return detail::subscribe_after(515, detail::trampoline<UnitStartedRepairingData>,
+        return detail::subscribe_after(516, detail::trampoline<UnitStartedRepairingData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6789,12 +6789,12 @@ namespace x4n::md
     };
 
     inline int on_unit_stopped_building_before(void(*cb)(const UnitStoppedBuildingData&)) {
-        return detail::subscribe_before(516, detail::trampoline<UnitStoppedBuildingData>,
+        return detail::subscribe_before(517, detail::trampoline<UnitStoppedBuildingData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_unit_stopped_building_after(void(*cb)(const UnitStoppedBuildingData&)) {
-        return detail::subscribe_after(516, detail::trampoline<UnitStoppedBuildingData>,
+        return detail::subscribe_after(517, detail::trampoline<UnitStoppedBuildingData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6815,12 +6815,12 @@ namespace x4n::md
     };
 
     inline int on_unit_stopped_repairing_before(void(*cb)(const UnitStoppedRepairingData&)) {
-        return detail::subscribe_before(517, detail::trampoline<UnitStoppedRepairingData>,
+        return detail::subscribe_before(518, detail::trampoline<UnitStoppedRepairingData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_unit_stopped_repairing_after(void(*cb)(const UnitStoppedRepairingData&)) {
-        return detail::subscribe_after(517, detail::trampoline<UnitStoppedRepairingData>,
+        return detail::subscribe_after(518, detail::trampoline<UnitStoppedRepairingData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6832,12 +6832,12 @@ namespace x4n::md
     };
 
     inline int on_universe_generated_before(void(*cb)(const UniverseGeneratedData&)) {
-        return detail::subscribe_before(518, detail::trampoline<UniverseGeneratedData>,
+        return detail::subscribe_before(519, detail::trampoline<UniverseGeneratedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_universe_generated_after(void(*cb)(const UniverseGeneratedData&)) {
-        return detail::subscribe_after(518, detail::trampoline<UniverseGeneratedData>,
+        return detail::subscribe_after(519, detail::trampoline<UniverseGeneratedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6858,12 +6858,12 @@ namespace x4n::md
     };
 
     inline int on_weapon_ammo_changed_before(void(*cb)(const WeaponAmmoChangedData&)) {
-        return detail::subscribe_before(540, detail::trampoline<WeaponAmmoChangedData>,
+        return detail::subscribe_before(541, detail::trampoline<WeaponAmmoChangedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_weapon_ammo_changed_after(void(*cb)(const WeaponAmmoChangedData&)) {
-        return detail::subscribe_after(540, detail::trampoline<WeaponAmmoChangedData>,
+        return detail::subscribe_after(541, detail::trampoline<WeaponAmmoChangedData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6884,12 +6884,12 @@ namespace x4n::md
     };
 
     inline int on_weapon_fired_before(void(*cb)(const WeaponFiredData&)) {
-        return detail::subscribe_before(542, detail::trampoline<WeaponFiredData>,
+        return detail::subscribe_before(543, detail::trampoline<WeaponFiredData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_weapon_fired_after(void(*cb)(const WeaponFiredData&)) {
-        return detail::subscribe_after(542, detail::trampoline<WeaponFiredData>,
+        return detail::subscribe_after(543, detail::trampoline<WeaponFiredData>,
             reinterpret_cast<void*>(cb));
     }
 
@@ -6901,12 +6901,12 @@ namespace x4n::md
     };
 
     inline int on_weapon_overheated_before(void(*cb)(const WeaponOverheatedData&)) {
-        return detail::subscribe_before(547, detail::trampoline<WeaponOverheatedData>,
+        return detail::subscribe_before(548, detail::trampoline<WeaponOverheatedData>,
             reinterpret_cast<void*>(cb));
     }
 
     inline int on_weapon_overheated_after(void(*cb)(const WeaponOverheatedData&)) {
-        return detail::subscribe_after(547, detail::trampoline<WeaponOverheatedData>,
+        return detail::subscribe_after(548, detail::trampoline<WeaponOverheatedData>,
             reinterpret_cast<void*>(cb));
     }
 

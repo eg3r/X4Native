@@ -2083,3 +2083,7 @@ X4_FUNC(ProductionMethodInfo3, GetProductionMethodInfo2, (const char* wareid, co
 
 // Functions removed in v9.00-603990:
 //   GetProductionMethodInfo
+
+// ======== Game v9.00-605025 - Added (1 functions) ========
+
+X4_FUNC(void, SetMapRenderResourceProbeRange, (UniverseID holomapid, bool value))

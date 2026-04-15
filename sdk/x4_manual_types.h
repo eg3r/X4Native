@@ -34,14 +34,14 @@ extern "C" {
 // FIND: Decompile X4_FrameTick (internal_functions.json). In else-branch (a2==0), find
 //   EnterCriticalSection block. GAME_TIME=first xmmword (+=delta*speed), RAW_TIME=high qword,
 //   REAL_TIME=second xmmword (!IsGamePaused_0 guard), SPEED_MULT=the qword multiplier.
-// Verified: build 604402
-#define X4_RVA_FRAME_GAME_TIME     0x06AF43F8  /* double — game_time (scaled by speed multiplier) */
-#define X4_RVA_FRAME_RAW_TIME      0x06AF4400  /* double — always-incrementing wall time */
-#define X4_RVA_FRAME_REAL_TIME     0x06AF4408  /* double — unpaused real time */
-#define X4_RVA_FRAME_SPEED_MULT    0x06AF4420  /* double — game speed multiplier (1.0/2.0/5.0/10.0) */
+// Verified: build 605025
+#define X4_RVA_FRAME_GAME_TIME     0x06AEE7F0  /* double — game_time (scaled by speed multiplier) */
+#define X4_RVA_FRAME_RAW_TIME      0x06AEE7F8  /* double — always-incrementing wall time */
+#define X4_RVA_FRAME_REAL_TIME     0x06AEE800  /* double — unpaused real time */
+#define X4_RVA_FRAME_SPEED_MULT    0x06AEE818  /* double — game speed multiplier (1.0/2.0/5.0/10.0) */
 
 // FIND: Same X4_FrameTick decompile — a1+568 frame_counter, a1+576 fps_timer, a1+584 fps.
-// Verified: build 604402 (unchanged from 603098)
+// Verified: build 605025 (unchanged from 603098)
 #define X4_ENGINECTX_OFFSET_FRAME_COUNTER  568  /* int32  — frame counter since last FPS sample */
 #define X4_ENGINECTX_OFFSET_FPS_TIMER      576  /* double — timestamp of last FPS calculation */
 #define X4_ENGINECTX_OFFSET_FPS            584  /* float  — current FPS (frames / elapsed) */
@@ -49,7 +49,7 @@ extern "C" {
 // ---- Native frame update event payload (on_native_frame_update) ----
 // Passed as the void* data arg to event callbacks.
 // Populated by core.cpp from the globals and engine context above.
-// Verified: build 604402 (see docs/rev/GAME_LOOP.md)
+// Verified: build 605025 (see docs/rev/GAME_LOOP.md)
 typedef struct X4NativeFrameUpdate {
     double  delta;          // Frame delta in seconds (capped at 1.0)
     double  game_time;      // Accumulated game time (with speed multiplier)
@@ -80,12 +80,12 @@ typedef struct X4RadarChangedEvent {
 // Subclasses extend with additional fields past the base region.
 // IMPORTANT: Fields from class_id (+0x68) onward are only valid for Object-hierarchy
 // entities (stations, ships, satellites, gates, etc.). Player and NPC entities do NOT
-// have these fields at these offsets. Use vtable GetClassID (slot 566) to identify type.
+// have these fields at these offsets. Use vtable GetClassID (slot 567) to identify type.
 // This is a READ-ONLY VIEW over game-engine-owned memory. Components are
 // allocated by the game's ComponentFactory — never construct X4Component yourself.
 // Obtain pointers via x4n::entity::find_component(id).
 // Layout confirmed by decompiling 15+ functions (see docs/rev/COMPONENT_SYSTEM.md §2).
-// Verified: build 604402 (universal prefix + Object-specific fields)
+// Verified: build 605025 (universal prefix + Object-specific fields)
 // Embedded definition interface at X4Component+0x30.
 // Has its own vtable. this ptr = &component->definition.
 // vtable[3] = GetName(), vtable[4] = GetMacroName() — both return MSVC std::string*.
@@ -117,7 +117,7 @@ typedef struct X4DefinitionInterface {
 // resource areas, etc.). Verified in-game across Sector, Ship, ResourceArea.
 // Heavier types (X4Component, X4ResourceArea) inherit from this.
 //
-// @verified v9.00 build 604402 (in-game probe: Sector/Ship/ResourceArea)
+// @verified v9.00 build 605025 (in-game probe: Sector/Ship/ResourceArea)
 struct X4EntityBase {
     void*      vtable;          // +0x00: main vtable (~800+ slots, see X4_VTABLE_* constants)
     UniverseID id;              // +0x08: UniverseID (also raw generation seed — dual purpose)
@@ -148,21 +148,21 @@ struct X4Component : X4EntityBase {
     uint8_t   _pad_B0[0x21];    // +0xB0..+0xD0: unresolved
     uint8_t   exists;            // +0xD1: existence flag (0=destroyed, nonzero=alive)
 
-    /// Runtime class ID via vtable slot 566 (GetGameClass).
+    /// Runtime class ID via vtable slot 567 (GetGameClass).
     /// Safe on all GameClass-registered types (ships, stations, sectors, etc.).
     /// NOT safe on lightweight types like ResourceArea — crashes (no GameClass entry).
     x4n::GameClass game_class() const {
         if (!vtable) return static_cast<x4n::GameClass>(x4n::GAMECLASS_SENTINEL);
         using Fn = uint32_t(__fastcall*)(const void*);
-        auto fn = reinterpret_cast<Fn*>(vtable)[566]; // X4_VTABLE_GET_CLASS_ID / 8
+        auto fn = reinterpret_cast<Fn*>(vtable)[567]; // X4_VTABLE_GET_CLASS_ID / 8
         return static_cast<x4n::GameClass>(fn ? fn(this) : x4n::GAMECLASS_SENTINEL);
     }
 
-    /// IS-A check via vtable slot 568 (IsOrDerivedFromGameClass).
+    /// IS-A check via vtable slot 569 (IsOrDerivedFromGameClass).
     bool is_a(x4n::GameClass cls) const {
         if (!vtable) return false;
         using Fn = bool(__fastcall*)(const void*, uint32_t);
-        auto fn = reinterpret_cast<Fn*>(vtable)[568]; // X4_VTABLE_IS_DERIVED_CLASS / 8
+        auto fn = reinterpret_cast<Fn*>(vtable)[569]; // X4_VTABLE_IS_DERIVED_CLASS / 8
         return fn ? fn(this, static_cast<uint32_t>(cls)) : false;
     }
 };
@@ -181,17 +181,17 @@ typedef struct X4ComponentRegistry_ X4ComponentRegistry;
 // Add to imagebase to get absolute address. Dereference to get the actual value.
 // WARNING: data address changes between builds. Re-verify on game updates.
 // FIND: Any caller of ComponentRegistry_Find — first param (rcx) loaded via MOV rcx,[rip+disp].
-// Verified: build 604402 (3 consistent callers)
-#define X4_RVA_COMPONENT_REGISTRY       0x06C84748  /* void** — g_ComponentRegistry */
+// Verified: build 605025 (3 consistent callers)
+#define X4_RVA_COMPONENT_REGISTRY       0x06C812E0  /* void** — g_ComponentRegistry */
 
 // ---- Component base struct offsets ----
 // IMPORTANT: Only offsets +0x00 through +0x44 are in the universal Component prefix.
 // Offsets +0x68 and beyond are Object-hierarchy specific (stations, ships, satellites,
 // gates, etc. — anything that IS-A "object"). They are NOT valid for Player, NPC,
-// Positional, or other non-Object entities. Use vtable GetClassID (slot 566) to check.
+// Positional, or other non-Object entities. Use vtable GetClassID (slot 567) to check.
 // Layout confirmed by decompiling 15+ functions (see docs/rev/COMPONENT_SYSTEM.md §4).
 // NOTE: struct offsets — update when game build changes.
-// Verified: build 604402 (universal prefix + Object-specific)
+// Verified: build 605025 (universal prefix + Object-specific)
 //
 // --- Universal Component prefix (valid for ALL component types) ---
 #define X4_COMPONENT_OFFSET_RAW_SEED       0x08   /* uint64 — raw generation seed (same field as ID) */
@@ -205,7 +205,7 @@ typedef struct X4ComponentRegistry_ X4ComponentRegistry;
 //
 // --- Object-hierarchy only (NOT valid for Player, NPC, Positional-only entities) ---
 #define X4_COMPONENT_OFFSET_CLASS_ID       0x68   /* int32  — DEPRECATED: NOT the runtime class ID.           */
-                                                   /*          GetClassID is a vtable function (slot 566)        */
+                                                   /*          GetClassID is a vtable function (slot 567)        */
                                                    /*          returning a hardcoded constant per class.         */
                                                    /*          This field's actual purpose is unconfirmed.       */
 #define X4_COMPONENT_OFFSET_PARENT         0x70   /* void*  — parent X4Component* (null for galaxy root) */
@@ -219,8 +219,7 @@ typedef struct X4ComponentRegistry_ X4ComponentRegistry;
 // Container is the base class for entities that hold other entities.
 // Stations and ships inherit these offsets from Container.
 // WARNING: SpaceSuit stores spawntime at a different offset (0xC88).
-// Verified: build 604402 (Container_GetSpawnTime @ 0x140B1F580: a1+0x6E0,
-//   previously Container_GetSpawnTime @ 0x140B1F520 in build 603990)
+// Verified: build 605025
 #define X4_CONTAINER_OFFSET_SPAWNTIME      0x6E0  /* double — game time when created/connected to universe */
                                                    /*          sentinel -1.0 = not set.                      */
                                                    /*          MD: $container.spawntime (class index 0x44C)   */
@@ -232,7 +231,7 @@ typedef struct X4ComponentRegistry_ X4ComponentRegistry;
 // Space entity (= Cluster), then reads these offsets.
 // FIND: sub_1407B51D0 (sunlight getter): while(!(entity+0x360)) walk parent.
 //   Reads double at entity+0x368 when flag is set.
-// @verified v9.00 build 604402 (IDA: sub_1407B51D0, sub_1402F04C0, sub_140252FF0)
+// @verified v9.00 build 605025
 #define X4_SPACE_OFFSET_HAS_SUNLIGHT       0x360  /* uint8 — flag: sunlight value is set (not inherited) */
 #define X4_SPACE_OFFSET_SUNLIGHT           0x368  /* double — sunlight intensity (0.0=dark, ~1.0=standard, up to ~3.7) */
 
@@ -240,19 +239,19 @@ typedef struct X4ComponentRegistry_ X4ComponentRegistry;
 // The main vtable at +0x00 has ~800+ slots. Key slots:
 // WARNING: vtable shifted +8 (one slot inserted) in build 603098 vs 602526.
 // All offsets from GetClassID onward increased by 8.
-// Verified: build 604402 (GetComponentClass @ 0x140151740: vtable+4528 for GetClassID,
-//   AddCluster @ 0x14013D9D0: vtable+4536 for IsClassID,
-//   sub_14067D090 (room private check): vtable+4544 for IsDerived,
-//   sub_140452B10 (GetMacroDefaults): vtable+136 for GetClassType)
+// WARNING: vtable shifted +8 (one slot inserted before ClassID) in build 605025 vs 604402.
+// Verified: build 605025 (GetComponentClass @ 0x140151730: vtable+4536 for GetClassID,
+//   AddCluster @ 0x14013DA60: vtable+4544 for IsClassID,
+//   SetObjectRadarVisible_Action @ 0x140B92660: vtable+4552 for IsDerived)
 #define X4_VTABLE_GET_CLASS_TYPE      136   /* slot 17:  GetClassType() -> uint */
-#define X4_VTABLE_GET_CLASS_ID       4528   /* slot 566: GetClassID() -> uint (120=sentinel) */
-#define X4_VTABLE_IS_CLASS_ID        4536   /* slot 567: IsClassID(classid) -> bool */
-#define X4_VTABLE_IS_DERIVED_CLASS   4544   /* slot 568: IsOrDerivedFromClassID(classid) -> bool */
-#define X4_VTABLE_GET_ID_CODE        4760   /* slot 595: GetIDCode() -> std::string* */
-#define X4_VTABLE_SET_WORLD_XFORM    5144   /* slot 643: SetWorldTransform(...) */
-#define X4_VTABLE_SET_POSITION       5184   /* slot 648: SetPosition(transform*) */
-#define X4_VTABLE_DESTROY            5408   /* slot 676: Destroy(reason, flags) */
-#define X4_VTABLE_GET_FACTION_ID     5608   /* slot 701: GetFactionID() -> int */
+#define X4_VTABLE_GET_CLASS_ID       4536   /* slot 567: GetClassID() -> uint (120=sentinel) */
+#define X4_VTABLE_IS_CLASS_ID        4544   /* slot 568: IsClassID(classid) -> bool */
+#define X4_VTABLE_IS_DERIVED_CLASS   4552   /* slot 569: IsOrDerivedFromClassID(classid) -> bool */
+#define X4_VTABLE_GET_ID_CODE        4768   /* slot 596: GetIDCode() -> std::string* */
+#define X4_VTABLE_SET_WORLD_XFORM    5152   /* slot 644: SetWorldTransform(...) */
+#define X4_VTABLE_SET_POSITION       5192   /* slot 649: SetPosition(transform*) */
+#define X4_VTABLE_DESTROY            5416   /* slot 677: Destroy(reason, flags) */
+#define X4_VTABLE_GET_FACTION_ID     5616   /* slot 702: GetFactionID() -> int */
 
 // ---- Child container internal layout (at COMPONENT_OFFSET_CHILDREN) ----
 // The child container is a GROUP-INDEXED PARTITION ARRAY (NOT a hash map).
@@ -271,7 +270,7 @@ typedef struct X4ComponentRegistry_ X4ComponentRegistry;
 //   ChildComponent_Iterator_Next:   0x1402F9AA0
 //   ChildComponent_GetBucketCount:  0x1402E5120
 
-// ---- Component ID decomposition (ComponentRegistry_Find @ 0x1400CE780, unchanged 604402) ----
+// ---- Component ID decomposition (ComponentRegistry_Find @ 0x1400CE7F0, build 605025) ----
 // UniverseID layout: bits 0-24 = slot index (1-based), bits 25-40 = generation counter.
 // Registry has up to 32 pages, ~1M entries per page, 3 entries packed per 32-byte block.
 // Third param to ComponentRegistry_Find is class mask (4 = general component lookup).
@@ -279,8 +278,8 @@ typedef struct X4ComponentRegistry_ X4ComponentRegistry;
 // ---- Galaxy global ----
 // WARNING: data address changes between builds. Re-verify on game updates.
 // FIND: Decompile GetPlayerID (PE export). First [rip+disp] load in .data/0x03CA range.
-// Verified: build 604402
-#define X4_RVA_GAME_UNIVERSE            0x03CADE88  /* void** — g_GameUniverse */
+// Verified: build 605025
+#define X4_RVA_GAME_UNIVERSE            0x03CAA948  /* void** — g_GameUniverse */
 #define X4_GAME_UNIVERSE_GALAXY_OFFSET  552         /* *(g_GameUniverse + 552) = galaxy component ptr */
 
 // ======== SEED / HASH CONSTANTS ==========================================
@@ -292,7 +291,7 @@ typedef struct X4ComponentRegistry_ X4ComponentRegistry;
 // These are algorithm constants embedded in code, not data references.
 // Likely stable across builds (PRNG design, not tunable), but verify on major engine changes.
 // Found inside MD_EvalSeed_AutoAdvance (0x140C10590 in build 602526).
-// Verified: build 604402 (algorithm constants, stable across builds)
+// Verified: build 605025 (algorithm constants, stable across builds)
 #define X4_SEED_LCG_MULTIPLIER  0x5851F42D4C957F2DULL
 #define X4_SEED_LCG_ADDEND     0x14057B7EF767814FULL
 #define X4_SEED_LCG_ROTATE     30
@@ -301,8 +300,8 @@ typedef struct X4ComponentRegistry_ X4ComponentRegistry;
 // WARNING: data address changes between builds. Re-verify on game updates.
 // FIND: Located 0x98 bytes before GAME_UNIVERSE (consistent across builds).
 //   Alt: callers of Component_GetCombinedSeed that XOR with a global.
-// Verified: build 604402 (predicted from GAME_UNIVERSE - 0x98)
-#define X4_RVA_SESSION_SEED             0x03CADDF0  /* uint64* — g_SessionSeed */
+// Verified: build 605025 (predicted from GAME_UNIVERSE - 0x98)
+#define X4_RVA_SESSION_SEED             0x03CAA8B0  /* uint64* — g_SessionSeed */
 
 // ======== WALKABLE INTERIORS =============================================
 // Room type enum and room property offsets.
@@ -310,7 +309,7 @@ typedef struct X4ComponentRegistry_ X4ComponentRegistry;
 
 // ---- RoomType enum (see docs/rev/WALKABLE_INTERIORS.md §17) ----
 // FIND: Enum init near 0x140752xxx, data table near 0x142479xxx, 22 entries.
-// Verified: build 604402 (enum values unchanged, addresses may drift)
+// Verified: build 605025 (enum values unchanged, addresses may drift)
 typedef enum X4RoomType {
     X4_ROOMTYPE_BAR               = 0,
     X4_ROOMTYPE_CASINO            = 1,
@@ -341,9 +340,7 @@ typedef enum X4RoomType {
 // added/removed/reordered in the Room class will shift these. Re-verify on
 // every game update. Currently only used for documentation; the hook approach
 // reads these via the game's own code paths, not direct memory access.
-// Verified: build 604402 (roomtype getter @ 0x1407342E0: a1+0x2C0,
-//   name getter @ 0x140679B70: a1+0x3A8, private check @ 0x14067D090: a1+0x408,
-//   persistent getter @ 0x140392EE0: a1+0x409)
+// Verified: build 605025
 #define X4_ROOM_OFFSET_ROOMTYPE    0x2C0  /* int32  — X4RoomType enum */
 #define X4_ROOM_OFFSET_UNK_3A0     0x3A0  /* uint8  — purpose unknown, set by CreateDynamicInterior */
 #define X4_ROOM_OFFSET_NAME        0x3A8  /* string — room name (std::string) */
@@ -359,14 +356,14 @@ typedef enum X4RoomType {
 // FIND: PLAN_DB: decompile ExportMapConstructionPlan (PE export), scan for [rip+disp] in .bss/0x06C8.
 //   MACRO_REG: decompile MacroRegistry_Lookup (find via 'Cannot find XML file component macro' string),
 //   scan body for [rip+disp] in .bss range.
-// Verified: build 604402
-#define X4_RVA_CONSTRUCTION_PLAN_DB     0x06C849D8  /* void** — g_ConstructionPlanRegistry (RB-tree at +16) */
-#define X4_RVA_MACRO_REGISTRY           0x06C84848  /* void*  — g_MacroRegistry (BST at +64) */
+// Verified: build 605025
+#define X4_RVA_CONSTRUCTION_PLAN_DB     0x06C81550  /* void** — g_ConstructionPlanRegistry (RB-tree at +16) */
+#define X4_RVA_MACRO_REGISTRY           0x06C813E0  /* void*  — g_MacroRegistry (BST at +64) */
 
 // ---- MacroData field offsets ----
 // Returned by MacroRegistry_Lookup. Connection array is sorted by FNV-1a hash.
 // WARNING: struct offsets — fragile across builds. Re-verify on game updates.
-// Verified: build 604402 (sub_14084BED0 binary search: a1+368=begin, a1+376=end, stride 352, hash at +8)
+// Verified: build 605025
 #define X4_MACRODATA_OFFSET_CONNECTIONS_BEGIN  0x170  /* void* — start of ConnectionEntry array */
 #define X4_MACRODATA_OFFSET_CONNECTIONS_END    0x178  /* void* — end of ConnectionEntry array */
 
@@ -375,13 +372,13 @@ typedef enum X4RoomType {
 // Name string at +16 is std::string (MSVC SSO: inline if len<16, heap ptr if >=16).
 // Confirmed by GetNumPlannedStationModules (0x14019dc90) which reads ConnectionEntry+16
 // to populate UIConstructionPlanEntry.connectionid.
-// Verified: build 604402 (sub_14084BED0: stride 352, hash at +8; GetNumPlannedStationModules: name at +16)
+// Verified: build 605025
 #define X4_CONNECTION_ENTRY_SIZE    0x160  /* 352 bytes */
 #define X4_CONNECTION_OFFSET_HASH   0x08   /* uint32 — FNV-1a hash of lowercased name */
 #define X4_CONNECTION_OFFSET_NAME   0x10   /* std::string — connection name (e.g. "connection_room01") */
 
 // ---- Dynamic Interior door selection ----
-// Controllable::CreateDynamicInterior (0x140415F20, unchanged 604402) selects a door connection from
+// Controllable::CreateDynamicInterior (0x140415720, build 605025) selects a door connection from
 // the corridor macro's "room" class MacroDefaults. The connection pointer array is at
 // MacroDefaults offset +1112 (begin) / +1120 (end).
 // Door selection algorithm when door param is NULL:
@@ -429,7 +426,7 @@ typedef enum X4RoomType {
 //
 // See docs/rev/CONSTRUCTION_PLANS.md for full documentation.
 // NOTE: struct layout — update when game build changes.
-// Verified: build 604402 (PlanEntry_Construct @ 0x140D12960 decompiled,
+// Verified: build 605025 (PlanEntry_Construct @ 0x140D11660 decompiled,
 //   528-byte allocation confirmed at call sites, all field offsets matched)
 typedef struct alignas(16) X4PlanEntry {
     int64_t   id;                   // +0:   unique ID (auto-assigned from atomic counter if 0)
@@ -459,9 +456,7 @@ typedef struct alignas(16) X4PlanEntry {
 
 // ---- Object-Class Visibility Offsets (type 71: stations, ships, satellites) ----
 // Full layout documented in docs/rev/VISIBILITY.md Section 9.
-// Verified: build 604402 (Object::IsKnown @ 0x140696650, Object::IsKnownTo @ 0x140696680,
-//   Object::SetKnownRead @ 0x140696980, Object::IsRadarVisible @ 0x140697FA0,
-//   SetForcedRadarVisible @ 0x1406A5F90, liveview @ sub_140698010)
+// Verified: build 605025 (radar_visible offset 0x400 confirmed in SetObjectRadarVisible_Action @ 0x140B92660)
 #define X4_OBJECT_OFFSET_OWNER_FACTION_PTR      840    /* void* — owner faction context pointer */
 #define X4_OBJECT_OFFSET_KNOWN_READ             857    /* uint8 — encyclopedia "read" flag */
 #define X4_OBJECT_OFFSET_KNOWN_TO_ALL           858    /* uint8 — global known flag (rarely set) */
@@ -478,7 +473,7 @@ typedef struct alignas(16) X4PlanEntry {
 // ResourceArea children of a Sector, used for unfiltered resource yield access.
 // GetDiscoveredSectorResources (FFI) has a player discovery filter at RA+0x1D0.
 // Direct memory access bypasses it by iterating the sector's child vector.
-// @verified v9.00 build 604402
+// @verified v9.00 build 605025
 
 // FIND: Decompile GetNumDiscoveredSectorResources (PE export). After sector class
 //   validation (vtable IS-A check for class 87=Sector), find `mov rsi,[rcx+XXX]`
@@ -531,7 +526,7 @@ static_assert(offsetof(X4WareClass, name_cap) == 0x28, "WareClass name_cap offse
 // In-game verified: cur <= max_yield always; typical max values 250k–1M.
 // Field-to-XML mapping verified via probe (hydrogen objectyieldfactor=1.0 /
 //   gatherspeedfactor=0.7; ice objectyieldfactor=1.2 / gatherspeedfactor=1.0).
-// @verified v9.00 build 604402
+// @verified v9.00 build 605025
 struct X4RegionYieldDef {
     // +0x00: definition ID std::string (MSVC layout: buf[16] + len + cap = 0x20 bytes)
     char          id_buf[16];            // +0x00 — SSO buffer or char* (MSVC SSO)
@@ -583,7 +578,7 @@ static_assert(offsetof(X4RegionYieldDef, scan_effect_intensity)== 0x64, "RegionY
 //   RA+0x1D0 = discovery time. sub_140743160 (depletion): writes RA+0x80.
 //   sub_1407425D0 (respawn): reads RA+0x38 (parent), writes RA+0x1D8 (job),
 //   RA+0x1E0 (pending flag).
-// @verified v9.00 build 604402
+// @verified v9.00 build 605025
 struct X4ResourceArea : X4EntityBase {
     X4RegionYieldDef*  definition;      // +0x30 — static definition (ware, max yield, params)
     void*              parent;          // +0x38 — parent/container ptr (used in respawn)
@@ -620,16 +615,15 @@ typedef struct X4MdEvent {
 // Three dispatchers: SetForcedRadarVisible_Internal, SetObjectRadarVisible_Action,
 // and the engine property change handler (case 378 in sector update pipeline).
 // FIND: Decompile SetObjectRadarVisible_Action (unique byte_sig). LEA reg,[rip+disp] in .rdata/0x02B range.
-// Verified: build 604402
-#define X4_RADAR_EVENT_VTABLE_RVA           0x02B49870  /* const U::RadarVisibilityChangedEvent::`vftable' */
+// Verified: build 605025
+#define X4_RADAR_EVENT_VTABLE_RVA           0x02B46D50  /* const U::RadarVisibilityChangedEvent::`vftable' */
 #define X4_RADAR_EVENT_OFFSET_ENTITY_ID     24          /* uint64 — ComponentID of affected entity */
 #define X4_RADAR_EVENT_OFFSET_VISIBLE       32          /* uint8  — new visibility state (0=left range, 1=entered range) */
 
 // ---- Space-Class Visibility Offsets (type 15/86/107: clusters, sectors, zones) ----
 // Different offsets from Object-class. No radar bytes (Space entities use known-to only).
 // Full layout documented in docs/rev/VISIBILITY.md Section 9.
-// Verified: build 604402 (Space::IsKnown @ 0x1407AEDD0, Space::IsKnownTo @ 0x1407AEE00,
-//   Space::SetKnownRead @ 0x1407AF100)
+// Verified: build 605025
 #define X4_SPACE_OFFSET_OWNER_FACTION_PTR       800    /* void* — owner faction context pointer */
 #define X4_SPACE_OFFSET_KNOWN_READ              817    /* uint8 — encyclopedia "read" flag */
 #define X4_SPACE_OFFSET_KNOWN_TO_ALL            818    /* uint8 — global known flag */

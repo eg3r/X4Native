@@ -7,7 +7,8 @@
         "900-602526",
         "900-603098",
         "900-603990",
-        "900-604402"
+        "900-604402",
+        "900-605025"
     ],
     "functions": {
         "AbortActiveDiplomacyActionOperation": {
@@ -6180,6 +6181,9 @@
         },
         "GetProductionMethodInfo2": {
             "added": "900-603990"
+        },
+        "SetMapRenderResourceProbeRange": {
+            "added": "900-605025"
         }
     }
 }
