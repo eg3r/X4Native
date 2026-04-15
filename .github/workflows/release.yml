@@ -62,13 +62,10 @@ jobs:
         run: |
           $ver = "${{ steps.version.outputs.full_version }}"
           $staging = "pkg/x4native-sdk"
-          New-Item -ItemType Directory -Path $staging/examples/hello -Force | Out-Null
+          New-Item -ItemType Directory -Path $staging -Force | Out-Null
 
           Copy-Item sdk/*.h $staging/
           Copy-Item sdk/*.inc $staging/
-          Copy-Item examples/hello/hello.cpp $staging/examples/hello/
-          Copy-Item examples/hello/CMakeLists.txt $staging/examples/hello/
-          Copy-Item examples/hello/x4native.json $staging/examples/hello/
 
           Compress-Archive -Path $staging -DestinationPath "pkg/x4native-sdk-v$ver.zip"
 
