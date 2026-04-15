@@ -18,6 +18,7 @@
 #include "x4native_defs.h"
 
 #include <x4_game_func_table.h>
+#include <x4_game_offsets.h>
 #include <x4_manual_types.h>
 #include <MinHook.h>
 
@@ -33,6 +34,97 @@
 // ---------------------------------------------------------------------------
 // Module-level state
 // ---------------------------------------------------------------------------
+// Runtime-resolved game offsets (extern'd by extension_manager.cpp).
+// Integer fields are statically initialized from #defines.
+// Pointer fields (needing exe_base) are filled by populate_offsets() at startup.
+X4GameOffsets s_offsets = {
+    // --- Pre-resolved pointers: nullptr until populate_offsets() ---
+    .frame_game_time       = nullptr,
+    .frame_raw_time        = nullptr,
+    .frame_real_time       = nullptr,
+    .frame_speed_mult      = nullptr,
+    .component_registry    = nullptr,
+    .game_universe         = nullptr,
+    .session_seed          = nullptr,
+    .construction_plan_db  = nullptr,
+    .macro_registry        = nullptr,
+    .radar_event_vtable    = nullptr,
+
+    // --- Vtable slot indices (pre-divided by 8) ---
+    .vtable_get_class_type   = X4_VTABLE_GET_CLASS_TYPE / 8,
+    .vtable_get_class_id     = X4_VTABLE_GET_CLASS_ID / 8,
+    .vtable_is_class_id      = X4_VTABLE_IS_CLASS_ID / 8,
+    .vtable_is_derived_class = X4_VTABLE_IS_DERIVED_CLASS / 8,
+    .vtable_get_id_code      = X4_VTABLE_GET_ID_CODE / 8,
+    .vtable_set_world_xform  = X4_VTABLE_SET_WORLD_XFORM / 8,
+    .vtable_set_position     = X4_VTABLE_SET_POSITION / 8,
+    .vtable_destroy          = X4_VTABLE_DESTROY / 8,
+    .vtable_get_faction_id   = X4_VTABLE_GET_FACTION_ID / 8,
+
+    // --- Engine context offsets ---
+    .enginectx_frame_counter = X4_ENGINECTX_OFFSET_FRAME_COUNTER,
+    .enginectx_fps_timer     = X4_ENGINECTX_OFFSET_FPS_TIMER,
+    .enginectx_fps           = X4_ENGINECTX_OFFSET_FPS,
+
+    // --- Component struct offsets ---
+    .component_id            = X4_COMPONENT_OFFSET_ID,
+    .component_definition    = X4_COMPONENT_OFFSET_DEFINITION,
+    .component_parent        = X4_COMPONENT_OFFSET_PARENT,
+    .component_children      = X4_COMPONENT_OFFSET_CHILDREN,
+    .component_exists        = X4_COMPONENT_OFFSET_EXISTS,
+    .component_combined_seed = X4_COMPONENT_OFFSET_COMBINED_SEED,
+
+    // --- Container / Space / Universe ---
+    .container_spawntime         = X4_CONTAINER_OFFSET_SPAWNTIME,
+    .space_has_sunlight          = X4_SPACE_OFFSET_HAS_SUNLIGHT,
+    .space_sunlight              = X4_SPACE_OFFSET_SUNLIGHT,
+    .game_universe_galaxy_offset = X4_GAME_UNIVERSE_GALAXY_OFFSET,
+
+    // --- Object-class visibility ---
+    .object_owner_faction_ptr    = X4_OBJECT_OFFSET_OWNER_FACTION_PTR,
+    .object_known_read           = X4_OBJECT_OFFSET_KNOWN_READ,
+    .object_known_to_all         = X4_OBJECT_OFFSET_KNOWN_TO_ALL,
+    .object_known_factions_arr   = X4_OBJECT_OFFSET_KNOWN_FACTIONS_ARR,
+    .object_known_factions_cap   = X4_OBJECT_OFFSET_KNOWN_FACTIONS_CAP,
+    .object_known_factions_count = X4_OBJECT_OFFSET_KNOWN_FACTIONS_COUNT,
+    .object_liveview_local       = X4_OBJECT_OFFSET_LIVEVIEW_LOCAL,
+    .object_liveview_monitor     = X4_OBJECT_OFFSET_LIVEVIEW_MONITOR,
+    .object_masstraffic_queue    = X4_OBJECT_OFFSET_MASSTRAFFIC_QUEUE,
+    .object_radar_visible        = X4_OBJECT_OFFSET_RADAR_VISIBLE,
+    .object_forced_radar_visible = X4_OBJECT_OFFSET_FORCED_RADAR_VISIBLE,
+
+    // --- Space-class visibility ---
+    .space_owner_faction_ptr     = X4_SPACE_OFFSET_OWNER_FACTION_PTR,
+    .space_known_read            = X4_SPACE_OFFSET_KNOWN_READ,
+    .space_known_to_all          = X4_SPACE_OFFSET_KNOWN_TO_ALL,
+    .space_known_factions_arr    = X4_SPACE_OFFSET_KNOWN_FACTIONS_ARR,
+    .space_known_factions_cap    = X4_SPACE_OFFSET_KNOWN_FACTIONS_CAP,
+    .space_known_factions_count  = X4_SPACE_OFFSET_KNOWN_FACTIONS_COUNT,
+
+    // --- Sector resource areas ---
+    .sector_resarea_vec_begin    = X4_SECTOR_RESAREA_VEC_BEGIN,
+    .sector_resarea_vec_end      = X4_SECTOR_RESAREA_VEC_END,
+
+    // --- MacroData / ConnectionEntry ---
+    .macrodata_connections_begin   = X4_MACRODATA_OFFSET_CONNECTIONS_BEGIN,
+    .macrodata_connections_end     = X4_MACRODATA_OFFSET_CONNECTIONS_END,
+    .connection_entry_size         = X4_CONNECTION_ENTRY_SIZE,
+    .connection_offset_hash        = X4_CONNECTION_OFFSET_HASH,
+    .connection_offset_name        = X4_CONNECTION_OFFSET_NAME,
+    .macrodefaults_room_conn_begin = X4_MACRODEFAULTS_OFFSET_ROOM_CONNECTIONS_BEGIN,
+    .macrodefaults_room_conn_end   = X4_MACRODEFAULTS_OFFSET_ROOM_CONNECTIONS_END,
+
+    // --- Radar event layout ---
+    .radar_event_entity_id = X4_RADAR_EVENT_OFFSET_ENTITY_ID,
+    .radar_event_visible   = X4_RADAR_EVENT_OFFSET_VISIBLE,
+
+    // --- Room offsets ---
+    .room_roomtype   = X4_ROOM_OFFSET_ROOMTYPE,
+    .room_name       = X4_ROOM_OFFSET_NAME,
+    .room_private    = X4_ROOM_OFFSET_PRIVATE,
+    .room_persistent = X4_ROOM_OFFSET_PERSISTENT,
+};
+
 static void*       g_lua       = nullptr;   // lua_State* (opaque here)
 static std::string g_ext_root;
 static std::string g_game_version;
@@ -45,6 +137,22 @@ static stash_set_fn    g_stash_set    = nullptr;
 static stash_get_fn    g_stash_get    = nullptr;
 static stash_remove_fn g_stash_remove = nullptr;
 static stash_clear_fn  g_stash_clear  = nullptr;
+
+// ---------------------------------------------------------------------------
+// Resolve pointer fields in s_offsets (requires exe_base, called once at startup)
+// ---------------------------------------------------------------------------
+static void resolve_offset_pointers(uintptr_t base) {
+    s_offsets.frame_game_time      = reinterpret_cast<double*>(base + X4_RVA_FRAME_GAME_TIME);
+    s_offsets.frame_raw_time       = reinterpret_cast<double*>(base + X4_RVA_FRAME_RAW_TIME);
+    s_offsets.frame_real_time      = reinterpret_cast<double*>(base + X4_RVA_FRAME_REAL_TIME);
+    s_offsets.frame_speed_mult     = reinterpret_cast<double*>(base + X4_RVA_FRAME_SPEED_MULT);
+    s_offsets.component_registry   = reinterpret_cast<void*>(base + X4_RVA_COMPONENT_REGISTRY);
+    s_offsets.game_universe        = reinterpret_cast<void*>(base + X4_RVA_GAME_UNIVERSE);
+    s_offsets.session_seed         = reinterpret_cast<uint64_t*>(base + X4_RVA_SESSION_SEED);
+    s_offsets.construction_plan_db = reinterpret_cast<void*>(base + X4_RVA_CONSTRUCTION_PLAN_DB);
+    s_offsets.macro_registry       = reinterpret_cast<void*>(base + X4_RVA_MACRO_REGISTRY);
+    s_offsets.radar_event_vtable   = reinterpret_cast<void*>(base + X4_RADAR_EVENT_VTABLE_RVA);
+}
 
 // ---------------------------------------------------------------------------
 // Native frame tick hook — fires on_native_frame_update to extensions
@@ -60,25 +168,25 @@ using FrameTickFn = void(__fastcall*)(void*, bool);
 
 static void __fastcall frame_tick_detour(void* engineCtx, bool isSuspended) {
     // Snapshot raw_time before the original runs
-    double raw_time_before = *(double*)(g_x4_base + X4_RVA_FRAME_RAW_TIME);
+    double raw_time_before = *s_offsets.frame_raw_time;
 
     // Call original frame tick
     reinterpret_cast<FrameTickFn>(g_frame_tick_trampoline)(engineCtx, isSuspended);
 
     // Compute delta from the engine's own raw time accumulation
-    double raw_time_after = *(double*)(g_x4_base + X4_RVA_FRAME_RAW_TIME);
+    double raw_time_after = *s_offsets.frame_raw_time;
     double delta = raw_time_after - raw_time_before;
     if (delta < 0.0) delta = 0.0;
 
     // Build event payload
     X4NativeFrameUpdate update{};
     update.delta            = delta;
-    update.game_time        = *(double*)(g_x4_base + X4_RVA_FRAME_GAME_TIME);
-    update.real_time        = *(double*)(g_x4_base + X4_RVA_FRAME_REAL_TIME);
-    update.fps              = *(float*)((uintptr_t)engineCtx + X4_ENGINECTX_OFFSET_FPS);
-    update.speed_multiplier = (float)*(double*)(g_x4_base + X4_RVA_FRAME_SPEED_MULT);
+    update.game_time        = *s_offsets.frame_game_time;
+    update.real_time        = *s_offsets.frame_real_time;
+    update.fps              = *(float*)((uintptr_t)engineCtx + s_offsets.enginectx_fps);
+    update.speed_multiplier = (float)*s_offsets.frame_speed_mult;
     update.is_suspended     = isSuspended;
-    update.frame_counter    = *(int*)((uintptr_t)engineCtx + X4_ENGINECTX_OFFSET_FRAME_COUNTER);
+    update.frame_counter    = *(int*)((uintptr_t)engineCtx + s_offsets.enginectx_frame_counter);
 
     auto* table = x4n::GameAPI::table();
     update.game_paused = (table && table->IsGamePaused) ? table->IsGamePaused() : false;
@@ -150,8 +258,8 @@ static void* __fastcall radar_event_detour(void* property_data) {
     // Read event payload
     auto addr = reinterpret_cast<uintptr_t>(event);
     X4RadarChangedEvent payload{};
-    payload.entity_id = *reinterpret_cast<uint64_t*>(addr + X4_RADAR_EVENT_OFFSET_ENTITY_ID);
-    payload.visible   = *reinterpret_cast<uint8_t*>(addr + X4_RADAR_EVENT_OFFSET_VISIBLE);
+    payload.entity_id = *reinterpret_cast<uint64_t*>(addr + s_offsets.radar_event_entity_id);
+    payload.visible   = *reinterpret_cast<uint8_t*>(addr + s_offsets.radar_event_visible);
 
     x4n::EventSystem::fire("on_radar_changed", &payload);
     return event;
@@ -356,6 +464,9 @@ int core_init(CoreInitContext* ctx) {
     x4n::GameAPI::init();
     x4n::GameAPI::load_internal_db(g_ext_root, X4_GAME_VERSION_LABEL,
                                     std::to_string(X4_GAME_TYPES_BUILD));
+
+    // 4b. Resolve pointer fields in game offsets (used by extensions and core hooks)
+    resolve_offset_pointers(x4n::GameAPI::exe_base());
 
     // 5. Hook manager — MinHook initialization
     x4n::HookManager::init();

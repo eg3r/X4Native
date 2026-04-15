@@ -33,7 +33,7 @@ class Module {
 public:
     explicit Module(UniverseID id)
         : id_(id), comp_(entity::find_component(id)) {
-        if (comp_ && !comp_->is_a(GameClass::Module))
+        if (comp_ && !entity::is_a(comp_, GameClass::Module))
             comp_ = nullptr;
     }
 
@@ -41,10 +41,10 @@ public:
     UniverseID id() const { return id_; }
 
     bool is_production() const {
-        return valid() && comp_->is_a(GameClass::Production);
+        return valid() && entity::is_a(comp_, GameClass::Production);
     }
     bool is_processing() const {
-        return valid() && comp_->is_a(GameClass::Processingmodule);
+        return valid() && entity::is_a(comp_, GameClass::Processingmodule);
     }
     bool is_operational() const {
         auto* g = game();

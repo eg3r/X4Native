@@ -40,19 +40,19 @@ inline void* resolve_connection(void* macro_ptr, const char* connection_name) {
     if (hash == 2166136261ULL) return nullptr;  // empty string hash = seed -> invalid
 
     auto addr = reinterpret_cast<uintptr_t>(macro_ptr);
-    auto begin = *reinterpret_cast<uintptr_t*>(addr + X4_MACRODATA_OFFSET_CONNECTIONS_BEGIN);
-    auto end   = *reinterpret_cast<uintptr_t*>(addr + X4_MACRODATA_OFFSET_CONNECTIONS_END);
+    auto begin = *reinterpret_cast<uintptr_t*>(addr + detail::offsets()->macrodata_connections_begin);
+    auto end   = *reinterpret_cast<uintptr_t*>(addr + detail::offsets()->macrodata_connections_end);
     if (!begin || begin >= end) return nullptr;
 
     // Binary search: entries sorted by hash at entry+8, stride 352 bytes
     // Note: engine stores hash as uint64 in the comparison despite FNV-1a producing 32-bit;
     // the upper 32 bits are the XOR overflow from 64-bit arithmetic.
-    size_t count = (end - begin) / X4_CONNECTION_ENTRY_SIZE;
+    size_t count = (end - begin) / detail::offsets()->connection_entry_size;
     size_t lo = 0, hi = count;
     while (lo < hi) {
         size_t mid = lo + (hi - lo) / 2;
-        auto entry_addr = begin + mid * X4_CONNECTION_ENTRY_SIZE;
-        auto entry_hash = *reinterpret_cast<uint64_t*>(entry_addr + X4_CONNECTION_OFFSET_HASH);
+        auto entry_addr = begin + mid * detail::offsets()->connection_entry_size;
+        auto entry_hash = *reinterpret_cast<uint64_t*>(entry_addr + detail::offsets()->connection_offset_hash);
         if (entry_hash < hash)
             lo = mid + 1;
         else if (entry_hash > hash)
@@ -74,7 +74,7 @@ inline void* resolve_macro(const char* macro_name, bool silent = true) {
     if (!g || !g->MacroRegistry_Lookup) return nullptr;
     static uintptr_t s_macro_reg = 0;
     if (!s_macro_reg)
-        s_macro_reg = *reinterpret_cast<uintptr_t*>(exe_base() + X4_RVA_MACRO_REGISTRY);
+        s_macro_reg = *reinterpret_cast<uintptr_t*>(detail::offsets()->macro_registry);
     if (!s_macro_reg) return nullptr;
 
     // Lowercase (engine uses lowercased FNV-1a keys)
@@ -95,7 +95,7 @@ inline void* resolve_macro(const char* macro_name, bool silent = true) {
 inline void* plan_registry() {
     static void* s_plan_reg = nullptr;
     if (!s_plan_reg)
-        s_plan_reg = *reinterpret_cast<void**>(exe_base() + X4_RVA_CONSTRUCTION_PLAN_DB);
+        s_plan_reg = *reinterpret_cast<void**>(detail::offsets()->construction_plan_db);
     return s_plan_reg;
 }
 

@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 
-#define X4NATIVE_API_VERSION 1
+#define X4NATIVE_API_VERSION 2
 #define X4NATIVE_VERSION_MAJOR 0
 #define X4NATIVE_VERSION_MINOR 9
 #define X4NATIVE_VERSION_PATCH 0

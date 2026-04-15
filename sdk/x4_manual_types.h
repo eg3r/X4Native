@@ -148,23 +148,9 @@ struct X4Component : X4EntityBase {
     uint8_t   _pad_B0[0x21];    // +0xB0..+0xD0: unresolved
     uint8_t   exists;            // +0xD1: existence flag (0=destroyed, nonzero=alive)
 
-    /// Runtime class ID via vtable slot 567 (GetGameClass).
-    /// Safe on all GameClass-registered types (ships, stations, sectors, etc.).
-    /// NOT safe on lightweight types like ResourceArea — crashes (no GameClass entry).
-    x4n::GameClass game_class() const {
-        if (!vtable) return static_cast<x4n::GameClass>(x4n::GAMECLASS_SENTINEL);
-        using Fn = uint32_t(__fastcall*)(const void*);
-        auto fn = reinterpret_cast<Fn*>(vtable)[567]; // X4_VTABLE_GET_CLASS_ID / 8
-        return static_cast<x4n::GameClass>(fn ? fn(this) : x4n::GAMECLASS_SENTINEL);
-    }
-
-    /// IS-A check via vtable slot 569 (IsOrDerivedFromGameClass).
-    bool is_a(x4n::GameClass cls) const {
-        if (!vtable) return false;
-        using Fn = bool(__fastcall*)(const void*, uint32_t);
-        auto fn = reinterpret_cast<Fn*>(vtable)[569]; // X4_VTABLE_IS_DERIVED_CLASS / 8
-        return fn ? fn(this, static_cast<uint32_t>(cls)) : false;
-    }
+    // For game_class() and is_a(), use x4n::entity::game_class(comp) and
+    // x4n::entity::is_a(comp, cls) from x4n_entity.h. These require the
+    // runtime offsets which are only available through the SDK API layer.
 };
 static_assert(offsetof(X4Component, id)         == 0x08, "X4Component::id offset mismatch");
 static_assert(offsetof(X4Component, definition) == 0x30, "X4Component::definition offset mismatch");

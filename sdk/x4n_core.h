@@ -18,6 +18,7 @@
 
 #include "x4native_extension.h"
 #include "x4_game_func_table.h"
+#include "x4_game_offsets.h"
 #include "x4_manual_types.h"
 
 #include <cstdio>
@@ -64,6 +65,11 @@ namespace detail {
             static_cast<const X4RadarChangedEvent*>(data));
     }
 
+    // Runtime-resolved game offsets — internal, used by SDK inline functions.
+    inline const X4GameOffsets* offsets() {
+        return static_cast<const X4GameOffsets*>(g_api->offsets);
+    }
+
 } // namespace detail
 
 // ---------------------------------------------------------------------------
@@ -101,6 +107,8 @@ inline const char* path() { return detail::g_api->extension_path; }
 /// X4.exe image base address. Use for resolving global RVAs:
 ///   auto ptr = *reinterpret_cast<void**>(x4n::exe_base() + MY_RVA);
 inline uintptr_t exe_base() { return detail::g_api->exe_base; }
+
+// offsets() is in detail:: — extensions use x4n::entity::*, x4n::visibility::*, etc.
 
 } // namespace x4n
 

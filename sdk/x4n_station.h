@@ -39,7 +39,7 @@ class Station {
 public:
     explicit Station(UniverseID id)
         : id_(id), comp_(entity::find_component(id)) {
-        if (comp_ && !comp_->is_a(GameClass::Station))
+        if (comp_ && !entity::is_a(comp_, GameClass::Station))
             comp_ = nullptr;
     }
 

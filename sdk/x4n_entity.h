@@ -9,9 +9,9 @@
 //   x4n::entity::get_component_macro() — macro name (heavy components only)
 //   x4n::entity::get_spawntime()       — Container-class spawntime
 //
-// For game_class() and is_a(), use the methods on X4Component directly:
-//   comp->game_class()               — returns GameClass enum
-//   comp->is_a(GameClass::Station)   — IS-A check via vtable
+// For game_class() and is_a(), use the free functions:
+//   x4n::entity::game_class(comp)               — returns GameClass enum
+//   x4n::entity::is_a(comp, GameClass::Station)  — IS-A check via vtable
 // For sector-specific properties (sunlight, resources), use x4n::sector::Sector.
 //
 // All functions require on_game_loaded to have fired.
@@ -23,6 +23,24 @@
 
 namespace x4n { namespace entity {
 
+/// Runtime class ID via vtable GetClassID slot.
+/// Safe on all GameClass-registered types (ships, stations, sectors, etc.).
+/// NOT safe on lightweight types like ResourceArea — crashes (no GameClass entry).
+inline GameClass game_class(const X4Component* comp) {
+    if (!comp || !comp->vtable) return static_cast<GameClass>(GAMECLASS_SENTINEL);
+    using Fn = uint32_t(__fastcall*)(const void*);
+    auto fn = reinterpret_cast<Fn*>(comp->vtable)[detail::offsets()->vtable_get_class_id];
+    return static_cast<GameClass>(fn ? fn(comp) : GAMECLASS_SENTINEL);
+}
+
+/// IS-A check via vtable IsOrDerivedFromClassID slot.
+inline bool is_a(const X4Component* comp, GameClass cls) {
+    if (!comp || !comp->vtable) return false;
+    using Fn = bool(__fastcall*)(const void*, uint32_t);
+    auto fn = reinterpret_cast<Fn*>(comp->vtable)[detail::offsets()->vtable_is_derived_class];
+    return fn ? fn(comp, static_cast<uint32_t>(cls)) : false;
+}
+
 /// Resolve a UniverseID to its X4Component* via the component registry.
 /// Returns nullptr if the ID is invalid or the registry isn't initialized.
 /// Reads the registry pointer from the global each call (the game may
@@ -33,7 +51,7 @@ namespace x4n { namespace entity {
 inline X4Component* find_component(uint64_t id) {
     auto* g = game();
     if (!g || !g->ComponentRegistry_Find) return nullptr;
-    auto* reg = *reinterpret_cast<X4ComponentRegistry**>(exe_base() + X4_RVA_COMPONENT_REGISTRY);
+    auto* reg = *reinterpret_cast<X4ComponentRegistry**>(detail::offsets()->component_registry);
     if (!reg) return nullptr;
     return static_cast<X4Component*>(
         g->ComponentRegistry_Find(reg, id, 4));
@@ -102,7 +120,7 @@ inline double get_spawntime(uint64_t id) {
     auto* comp = find_component(id);
     if (!comp) return -1.0;
     return *reinterpret_cast<double*>(
-        reinterpret_cast<uintptr_t>(comp) + X4_CONTAINER_OFFSET_SPAWNTIME);
+        reinterpret_cast<uintptr_t>(comp) + detail::offsets()->container_spawntime);
 }
 
 /// Read the spawntime directly from a component pointer.
@@ -110,7 +128,7 @@ inline double get_spawntime(uint64_t id) {
 inline double get_spawntime(const X4Component* comp) {
     if (!comp) return -1.0;
     return *reinterpret_cast<const double*>(
-        reinterpret_cast<uintptr_t>(comp) + X4_CONTAINER_OFFSET_SPAWNTIME);
+        reinterpret_cast<uintptr_t>(comp) + detail::offsets()->container_spawntime);
 }
 
 }} // namespace x4n::entity

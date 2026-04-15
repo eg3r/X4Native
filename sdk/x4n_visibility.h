@@ -44,7 +44,7 @@ inline bool get_radar_visible(uint64_t id) {
     auto* comp = entity::find_component(id);
     if (!comp) return false;
     return *reinterpret_cast<uint8_t*>(
-        reinterpret_cast<uintptr_t>(comp) + X4_OBJECT_OFFSET_RADAR_VISIBLE) != 0;
+        reinterpret_cast<uintptr_t>(comp) + detail::offsets()->object_radar_visible) != 0;
 }
 
 /// Read the forced_radar_visible byte (+0x401) directly from an Object-class entity.
@@ -56,7 +56,7 @@ inline bool get_forced_radar_visible(uint64_t id) {
     auto* comp = entity::find_component(id);
     if (!comp) return false;
     return *reinterpret_cast<uint8_t*>(
-        reinterpret_cast<uintptr_t>(comp) + X4_OBJECT_OFFSET_FORCED_RADAR_VISIBLE) != 0;
+        reinterpret_cast<uintptr_t>(comp) + detail::offsets()->object_forced_radar_visible) != 0;
 }
 
 /// Check if an Object-class entity passes the Lua sidebar visibility filter.
@@ -78,8 +78,8 @@ inline bool is_map_visible(uint64_t id) {
     auto* comp = entity::find_component(id);
     if (!comp) return false;
     auto addr = reinterpret_cast<uintptr_t>(comp);
-    uint8_t radar  = *reinterpret_cast<uint8_t*>(addr + X4_OBJECT_OFFSET_RADAR_VISIBLE);
-    uint8_t forced = *reinterpret_cast<uint8_t*>(addr + X4_OBJECT_OFFSET_FORCED_RADAR_VISIBLE);
+    uint8_t radar  = *reinterpret_cast<uint8_t*>(addr + detail::offsets()->object_radar_visible);
+    uint8_t forced = *reinterpret_cast<uint8_t*>(addr + detail::offsets()->object_forced_radar_visible);
     return (radar != 0) || (forced != 0);
 }
 
@@ -91,7 +91,7 @@ inline bool get_known_to_all(uint64_t id) {
     auto* comp = entity::find_component(id);
     if (!comp) return false;
     return *reinterpret_cast<uint8_t*>(
-        reinterpret_cast<uintptr_t>(comp) + X4_OBJECT_OFFSET_KNOWN_TO_ALL) != 0;
+        reinterpret_cast<uintptr_t>(comp) + detail::offsets()->object_known_to_all) != 0;
 }
 
 /// Read the known_factions_count from an Object-class entity (+904).
@@ -102,7 +102,7 @@ inline size_t get_known_factions_count(uint64_t id) {
     auto* comp = entity::find_component(id);
     if (!comp) return 0;
     return *reinterpret_cast<size_t*>(
-        reinterpret_cast<uintptr_t>(comp) + X4_OBJECT_OFFSET_KNOWN_FACTIONS_COUNT);
+        reinterpret_cast<uintptr_t>(comp) + detail::offsets()->object_known_factions_count);
 }
 
 /// Read the known_to_all flag from a Space-class entity (+818).
@@ -113,7 +113,7 @@ inline bool get_space_known_to_all(uint64_t id) {
     auto* comp = entity::find_component(id);
     if (!comp) return false;
     return *reinterpret_cast<uint8_t*>(
-        reinterpret_cast<uintptr_t>(comp) + X4_SPACE_OFFSET_KNOWN_TO_ALL) != 0;
+        reinterpret_cast<uintptr_t>(comp) + detail::offsets()->space_known_to_all) != 0;
 }
 
 /// Read the known_factions_count from a Space-class entity (+848).
@@ -123,7 +123,7 @@ inline size_t get_space_known_factions_count(uint64_t id) {
     auto* comp = entity::find_component(id);
     if (!comp) return 0;
     return *reinterpret_cast<size_t*>(
-        reinterpret_cast<uintptr_t>(comp) + X4_SPACE_OFFSET_KNOWN_FACTIONS_COUNT);
+        reinterpret_cast<uintptr_t>(comp) + detail::offsets()->space_known_factions_count);
 }
 
 // ---------------------------------------------------------------------------
@@ -135,7 +135,7 @@ inline void set_radar_visible(uint64_t id, bool visible) {
     auto* comp = entity::find_component(id);
     if (!comp) return;
     *reinterpret_cast<uint8_t*>(
-        reinterpret_cast<uintptr_t>(comp) + X4_OBJECT_OFFSET_RADAR_VISIBLE) = visible ? 1 : 0;
+        reinterpret_cast<uintptr_t>(comp) + detail::offsets()->object_radar_visible) = visible ? 1 : 0;
 }
 
 // ---------------------------------------------------------------------------

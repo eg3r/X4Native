@@ -7,6 +7,10 @@
 
 #include <x4_game_types.h>
 #include <x4_game_func_table.h>
+#include <x4_game_offsets.h>
+
+// Runtime-resolved offsets populated by core.cpp::populate_offsets()
+extern X4GameOffsets s_offsets;
 
 #include <nlohmann/json.hpp>
 #include <filesystem>
@@ -659,6 +663,7 @@ void ExtensionManager::fill_api(X4NativeAPI& api, ExtensionInfo& ext) {
     api._ext_init_log_fn      = reinterpret_cast<void*>(api_init_log);
     api._ext_log_named_fn     = reinterpret_cast<void*>(api_log_named);
     api._ext_info             = &ext;
+    api.offsets               = &s_offsets;
 }
 
 // ---------------------------------------------------------------------------

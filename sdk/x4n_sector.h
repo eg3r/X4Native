@@ -34,7 +34,7 @@ class Sector {
 public:
     explicit Sector(UniverseID id)
         : id_(id), comp_(entity::find_component(id)) {
-        if (comp_ && !comp_->is_a(GameClass::Sector))
+        if (comp_ && !entity::is_a(comp_, GameClass::Sector))
             comp_ = nullptr;
     }
 
@@ -51,8 +51,8 @@ public:
         auto* cur = reinterpret_cast<const X4Component*>(comp_->parent);
         while (cur) {
             auto p = reinterpret_cast<uintptr_t>(cur);
-            if (*reinterpret_cast<const uint8_t*>(p + X4_SPACE_OFFSET_HAS_SUNLIGHT))
-                return static_cast<float>(*reinterpret_cast<const double*>(p + X4_SPACE_OFFSET_SUNLIGHT));
+            if (*reinterpret_cast<const uint8_t*>(p + detail::offsets()->space_has_sunlight))
+                return static_cast<float>(*reinterpret_cast<const double*>(p + detail::offsets()->space_sunlight));
             cur = reinterpret_cast<const X4Component*>(cur->parent);
         }
         return -1.0f;

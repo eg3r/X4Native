@@ -142,7 +142,7 @@ class Ship {
 public:
     explicit Ship(UniverseID id)
         : id_(id), comp_(entity::find_component(id)) {
-        if (comp_ && !comp_->is_a(GameClass::Ship))
+        if (comp_ && !entity::is_a(comp_, GameClass::Ship))
             comp_ = nullptr;
     }
 

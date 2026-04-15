@@ -40,7 +40,7 @@ static void inspect_entity(uint64_t id, const char* label) {
     }
 
     // --- Class ID via vtable (universal — works for ALL component types) ---
-    auto cls = comp->game_class();
+    auto cls = x4n::entity::game_class(comp);
 
     // --- Macro name via definition interface vtable (universal) ---
     const char* macro = x4n::entity::get_component_macro(comp);
@@ -50,13 +50,12 @@ static void inspect_entity(uint64_t id, const char* label) {
                    macro ? macro : "(null)");
 
     // --- Object-hierarchy fields (only valid if IS-A "object") ---
-    bool is_object = comp->is_a(x4n::GameClass::Object);
+    bool is_object = x4n::entity::is_a(comp, x4n::GameClass::Object);
     if (is_object) {
         bool    alive  = comp->exists != 0;
         void*   parent = comp->parent;
         uint64_t parent_id = parent
-            ? *reinterpret_cast<uint64_t*>(
-                reinterpret_cast<uintptr_t>(parent) + X4_COMPONENT_OFFSET_ID)
+            ? reinterpret_cast<X4Component*>(parent)->id
             : 0;
         int64_t combined_seed = *reinterpret_cast<int64_t*>(
             reinterpret_cast<uintptr_t>(comp) + X4_COMPONENT_OFFSET_COMBINED_SEED);
@@ -83,7 +82,7 @@ static void inspect_entity(uint64_t id, const char* label) {
     }
 
     // --- Space-class visibility (clusters, sectors, zones — NOT Object-derived) ---
-    bool is_space = comp->is_a(x4n::GameClass::Space);
+    bool is_space = x4n::entity::is_a(comp, x4n::GameClass::Space);
     if (is_space) {
         bool known_all   = x4n::visibility::get_space_known_to_all(id);
         size_t fac_count = x4n::visibility::get_space_known_factions_count(id);
@@ -93,7 +92,7 @@ static void inspect_entity(uint64_t id, const char* label) {
     }
 
     // --- Spawntime (Container-class: stations, ships) ---
-    if (comp->is_a(x4n::GameClass::Container)) {
+    if (x4n::entity::is_a(comp, x4n::GameClass::Container)) {
         double spawn = x4n::entity::get_spawntime(id);
         if (spawn >= 0.0)
             x4n::log::info("inspector: [%s]   spawntime=%.1f", label, spawn);

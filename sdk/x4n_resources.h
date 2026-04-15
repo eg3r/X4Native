@@ -75,11 +75,11 @@ inline uint32_t collect_raw(
     __try {
         auto* sector = entity::find_component(sector_id);
         if (!sector) return 0;
-        if (!sector->is_a(x4n::GameClass::Sector)) return 0;
+        if (!entity::is_a(sector, x4n::GameClass::Sector)) return 0;
 
         auto base = reinterpret_cast<uintptr_t>(sector);
-        auto** begin = *reinterpret_cast<X4EntityBase***>(base + X4_SECTOR_RESAREA_VEC_BEGIN);
-        auto** end   = *reinterpret_cast<X4EntityBase***>(base + X4_SECTOR_RESAREA_VEC_END);
+        auto** begin = *reinterpret_cast<X4EntityBase***>(base + detail::offsets()->sector_resarea_vec_begin);
+        auto** end   = *reinterpret_cast<X4EntityBase***>(base + detail::offsets()->sector_resarea_vec_end);
         if (!begin || begin >= end) return 0;
 
         uint32_t wcount = 0;

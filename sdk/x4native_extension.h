@@ -200,7 +200,12 @@ typedef struct X4NativeAPI {
     void*       _ext_log_named_fn;      // fn(int,cstr,cstr,ptr) — one-shot write to named file
     void*       _ext_info;              // ExtensionInfo* — internal framework pointer
 
-    void* _reserved[12];
+    // --- Runtime-resolved game offsets (populated by framework at startup) ---
+    // Pre-computed struct of all version-dependent values.
+    // Extensions read from this via x4n::offsets() — never need recompilation.
+    const void* offsets;            // X4GameOffsets* — internal, used by SDK inline functions
+
+    void* _reserved[11];
 } X4NativeAPI;
 
 // ---- Required exports from extension DLLs --------------------------------
