@@ -434,8 +434,8 @@ static void on_game_loaded() {
         }
     }
 
-    x4n::log::info((std::string("event_probe: loaded ") +
-        std::to_string(vtable_rvas.size()) + " vtable RVAs, scanning .text for builders...").c_str());
+    x4n::log::info("event_probe: loaded {} vtable RVAs, scanning .text for builders...",
+                   vtable_rvas.size());
 
     // For each event type, find builders and scan their code
     std::unordered_map<uint32_t, EventLayout> layouts;
@@ -484,9 +484,8 @@ static void on_game_loaded() {
         }
     }
 
-    x4n::log::info((std::string("event_probe: found builders for ") +
-        std::to_string(found_builders) + " types, layouts for " +
-        std::to_string(found_layouts)).c_str());
+    x4n::log::info("event_probe: found builders for {} types, layouts for {}",
+                   found_builders, found_layouts);
 
     // Write event_layouts.csv
     {
@@ -513,8 +512,8 @@ static void on_game_loaded() {
         }
     }
 
-    x4n::log::info((std::string("event_probe: wrote ") +
-        std::to_string(found_layouts) + " event layouts → event_layouts.csv").c_str());
+    x4n::log::info("event_probe: wrote {} event layouts → event_layouts.csv",
+                   found_layouts);
 }
 
 X4N_EXTENSION {

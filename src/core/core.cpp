@@ -460,7 +460,9 @@ int core_init(CoreInitContext* ctx) {
     g_lua      = ctx->lua_state;
     g_ext_root = ctx->ext_root;
 
-    // 1. Logger
+    // 1. Logger — two-phase init. Start buffering in memory; the file is
+    //    opened in step 5 once we have GameAPI (needed to resolve the
+    //    user's X4 profile path). Early log lines are replayed on open.
     x4n::Logger::init(g_ext_root);
     x4n::Logger::info("X4Native core v" X4_GAME_VERSION_LABEL " initializing...");
     x4n::Logger::info("Extension root: {}", g_ext_root);
@@ -477,6 +479,10 @@ int core_init(CoreInitContext* ctx) {
     x4n::GameAPI::init();
     x4n::GameAPI::load_internal_db(g_ext_root, X4_GAME_VERSION_LABEL,
                                     std::to_string(X4_GAME_TYPES_BUILD));
+
+    // 5. Logger — open file sink in <profile>\x4native\x4native.log and
+    //    flush the buffer produced by steps 1-4.
+    x4n::Logger::open_files();
 
     // 4b. Resolve pointer fields in game offsets (used by extensions and core hooks)
     resolve_offset_pointers(x4n::GameAPI::exe_base());

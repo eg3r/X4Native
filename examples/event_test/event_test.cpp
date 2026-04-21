@@ -66,7 +66,7 @@ static void on_game_loaded() {
         [](const x4n::md::KilledData& e) {
             g_md_killed_count++;
             if (g_md_killed_count <= 3)
-                x4n::log::info("event_test: [md:killed] entity %llu killer=%llu method=%llu",
+                x4n::log::info("event_test: [md:killed] entity {} killer={} method={}",
                     e.source_id, e.killer, e.kill_method);
         });
 
@@ -74,14 +74,14 @@ static void on_game_loaded() {
         [](const x4n::md::FactionRelationChangedData& e) {
             g_md_relation_count++;
             if (g_md_relation_count <= 3)
-                x4n::log::info("event_test: [md:faction_relation] changed at t=%.1f",
+                x4n::log::info("event_test: [md:faction_relation] changed at t={:.1f}",
                     e.timestamp);
         });
 
     g_sub_md_sector_owner = x4n::md::on_sector_changed_owner_after(
         [](const x4n::md::SectorChangedOwnerData& e) {
             g_md_sector_owner_count++;
-            x4n::log::info("event_test: [md:sector_owner] sector %llu new_owner %llu (prev %llu)",
+            x4n::log::info("event_test: [md:sector_owner] sector {} new_owner {} (prev {})",
                 e.sector_changing_ownership, e.new_owner_faction, e.previous_owner_faction);
         });
 
@@ -89,7 +89,7 @@ static void on_game_loaded() {
         [](const x4n::md::ChangedAssignmentData& e) {
             g_md_assignment_count++;
             if (g_md_assignment_count <= 5)
-                x4n::log::info("event_test: [md:assignment68] subordinate=%llu src=%llu",
+                x4n::log::info("event_test: [md:assignment68] subordinate={} src={}",
                     e.subordinate, e.source_id);
         });
 
@@ -97,7 +97,7 @@ static void on_game_loaded() {
         [](const x4n::md::BuildFinishedData& e) {
             g_md_build_count++;
             if (g_md_build_count <= 20)
-                x4n::log::info("event_test: [md:build_finished] #%d source=%llu buildprocessor=%llu",
+                x4n::log::info("event_test: [md:build_finished] #{} source={} buildprocessor={}",
                     g_md_build_count, e.source_id, e.buildprocessor);
         });
 
@@ -105,7 +105,7 @@ static void on_game_loaded() {
         [](const x4n::md::SubordinateAddedData& e) {
             g_md_sub_added_count++;
             if (g_md_sub_added_count <= 10)
-                x4n::log::info("event_test: [md:sub_added] #%d sub=%llu commander=%llu",
+                x4n::log::info("event_test: [md:sub_added] #{} sub={} commander={}",
                     g_md_sub_added_count, e.subordinate, e.source_id);
         });
 
@@ -113,7 +113,7 @@ static void on_game_loaded() {
         [](const x4n::md::SubordinateRemovedData& e) {
             g_md_sub_removed_count++;
             if (g_md_sub_removed_count <= 10)
-                x4n::log::info("event_test: [md:sub_removed] #%d sub=%llu old_cmdr=%llu",
+                x4n::log::info("event_test: [md:sub_removed] #{} sub={} old_cmdr={}",
                     g_md_sub_removed_count, e.subordinate, e.source_id);
         });
 
@@ -145,7 +145,7 @@ static void on_frame_update() {
     // Log every 600 frames (~10 seconds at 60fps) to show it's working
     if (g_frame_count % 600 == 0) {
         x4n::log::debug(
-            "event_test: [on_frame_update] %d frames | killed=%d relation=%d sector=%d assign68=%d build=%d sub_add=%d sub_rm=%d",
+            "event_test: [on_frame_update] {} frames | killed={} relation={} sector={} assign68={} build={} sub_add={} sub_rm={}",
             g_frame_count, g_md_killed_count, g_md_relation_count,
             g_md_sector_owner_count, g_md_assignment_count, g_md_build_count,
             g_md_sub_added_count, g_md_sub_removed_count);
@@ -189,7 +189,7 @@ X4N_EXTENSION {
     g_sub_pong = x4n::on("on_event_test_pong", on_pong);
 
     x4n::log::info(
-        "event_test: subscribed to 6 lifecycle/custom events (ids: %d, %d, %d, %d, %d, %d)",
+        "event_test: subscribed to 6 lifecycle/custom events (ids: {}, {}, {}, {}, {}, {})",
         g_sub_loaded, g_sub_save, g_sub_frame, g_sub_reload, g_sub_custom, g_sub_pong);
     x4n::log::info(
         "event_test: MD event subscriptions registered in on_game_loaded (7 types)");
@@ -215,7 +215,7 @@ X4N_SHUTDOWN {
     x4n::off(g_sub_md_sub_added);
     x4n::off(g_sub_md_sub_removed);
 
-    x4n::log::info("event_test: total frames: %d | killed=%d relation=%d sector=%d assign68=%d build=%d sub_add=%d sub_rm=%d",
+    x4n::log::info("event_test: total frames: {} | killed={} relation={} sector={} assign68={} build={} sub_add={} sub_rm={}",
         g_frame_count, g_md_killed_count, g_md_relation_count,
         g_md_sector_owner_count, g_md_assignment_count, g_md_build_count,
         g_md_sub_added_count, g_md_sub_removed_count);

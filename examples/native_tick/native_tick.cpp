@@ -50,13 +50,12 @@ static void on_native_tick(const X4NativeFrameUpdate* frame) {
         }
 
         x4n::log::info(
-            "native_tick: player='%s' faction='%s' ship='%s' | "
-            "fps=%.1f delta=%.4fs game_time=%.1f speed=%.0fx paused=%s suspended=%s",
+            "native_tick: player='{}' faction='{}' ship='{}' | "
+            "fps={:.1f} delta={:.4f}s game_time={:.1f} speed={:.0f}x paused={} suspended={}",
             player_name, faction, ship_name,
             frame->fps, frame->delta, frame->game_time,
             frame->speed_multiplier,
-            frame->game_paused ? "yes" : "no",
-            frame->is_suspended ? "yes" : "no");
+            frame->game_paused, frame->is_suspended);
     }
 }
 
@@ -75,7 +74,7 @@ X4N_EXTENSION {
     g_sub_tick   = x4n::on("on_native_frame_update", on_native_tick);
     g_sub_loaded = x4n::on("on_game_loaded",         on_game_loaded);
 
-    x4n::log::info("native_tick: subscribed (tick=%d, loaded=%d)",
+    x4n::log::info("native_tick: subscribed (tick={}, loaded={})",
                    g_sub_tick, g_sub_loaded);
 }
 

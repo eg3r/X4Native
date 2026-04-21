@@ -1,9 +1,6 @@
 #include "settings_manager.h"
 #include "event_system.h"
-#include "game_api.h"
 #include "logger.h"
-
-#include <x4_game_func_table.h>
 
 #include <filesystem>
 #include <fstream>
@@ -74,37 +71,15 @@ SettingType SettingsManager::type_of(const std::string& extension_id,
 // ---------------------------------------------------------------------------
 
 std::string SettingsManager::user_file_path(const std::string& extension_id) {
-    auto* game = GameAPI::table();
-    if (!game || !game->GetSaveFolderPath) {
-        Logger::warn("Settings: GetSaveFolderPath unavailable; cannot persist '{}'",
+    // Reuse the same path logic the logger uses so framework + settings land
+    // together under <profile>\x4native\<extension_id>\.
+    auto ext_dir = Logger::profile_ext_dir(extension_id);
+    if (ext_dir.empty()) {
+        Logger::warn("Settings: profile path unresolved; cannot persist '{}'",
                      extension_id);
         return {};
     }
-
-    const char* raw = game->GetSaveFolderPath();
-    if (!raw || !raw[0]) {
-        Logger::warn("Settings: GetSaveFolderPath returned empty; cannot persist '{}'",
-                     extension_id);
-        return {};
-    }
-
-    // GetSaveFolderPath returns "<profile>\save\" — parent_path() gives
-    // "<profile>" once we strip the trailing separator fs doesn't handle.
-    fs::path save_folder(raw);
-    if (save_folder.has_filename())
-        save_folder = save_folder.parent_path();
-    else
-        save_folder = save_folder.parent_path().parent_path();
-
-    fs::path dir = save_folder / "x4native";
-    std::error_code ec;
-    fs::create_directories(dir, ec);
-    if (ec) {
-        Logger::warn("Settings: create_directories('{}') failed: {}",
-                     dir.string(), ec.message());
-        return {};
-    }
-    return (dir / (extension_id + ".user.json")).string();
+    return ext_dir + "settings.user.json";
 }
 
 void SettingsManager::ensure_loaded(const std::string& extension_id,
@@ -261,6 +236,12 @@ void SettingsManager::fire_change(const std::string& extension_id,
         }
     }, new_value);
 
+    // Fire a scoped event for the owning extension so subscribers only
+    // receive their own keys. Also fire the unscoped "on_setting_changed"
+    // so cross-extension observers (debug tools, settings inspectors) can
+    // tap into the firehose if needed.
+    std::string scoped = "on_setting_changed:" + extension_id;
+    EventSystem::fire(scoped.c_str(), &payload);
     EventSystem::fire("on_setting_changed", &payload);
 }
 
@@ -449,13 +430,26 @@ void SettingsManager::set_from_abi(const std::string& extension_id,
 // Schema parsing (called from ExtensionManager::parse_config)
 // ---------------------------------------------------------------------------
 
-static bool parse_one(const json& j, SettingSchema& out, const std::string& context) {
+// Emit a parse-time warning to both the framework log and (if provided) a
+// per-extension buffer that the caller will flush into the extension's own
+// log once it's open.
+template<typename... Args>
+static void schema_warn(std::vector<std::pair<LogLevel, std::string>>* buf,
+                        std::format_string<Args...> fmt, Args&&... args) {
+    auto msg = std::format(fmt, std::forward<Args>(args)...);
+    Logger::warn("{}", msg);
+    if (buf) buf->push_back({LogLevel::Warn, std::move(msg)});
+}
+
+static bool parse_one(const json& j, SettingSchema& out,
+                      const std::string& context,
+                      std::vector<std::pair<LogLevel, std::string>>* warnings) {
     if (!j.is_object()) {
-        Logger::warn("Settings: {} entry is not an object", context);
+        schema_warn(warnings, "Settings: {} entry is not an object", context);
         return false;
     }
     if (!j.contains("id") || !j["id"].is_string()) {
-        Logger::warn("Settings: {} entry missing 'id'", context);
+        schema_warn(warnings, "Settings: {} entry missing 'id'", context);
         return false;
     }
     out.id = j["id"].get<std::string>();
@@ -466,8 +460,8 @@ static bool parse_one(const json& j, SettingSchema& out, const std::string& cont
     else if (type_str == "dropdown") out.type = SettingType::Dropdown;
     else if (type_str == "slider")   out.type = SettingType::Slider;
     else {
-        Logger::warn("Settings: {}/{} unknown type '{}' — skipping",
-                     context, out.id, type_str);
+        schema_warn(warnings, "Settings: {}/{} unknown type '{}' — skipping",
+                    context, out.id, type_str);
         return false;
     }
 
@@ -508,8 +502,9 @@ static bool parse_one(const json& j, SettingSchema& out, const std::string& cont
             else if (!out.options.empty())
                 out.default_string = out.options.front().id;
             if (out.options.empty()) {
-                Logger::warn("Settings: {}/{} dropdown has no options — skipping",
-                             context, out.id);
+                schema_warn(warnings,
+                            "Settings: {}/{} dropdown has no options — skipping",
+                            context, out.id);
                 return false;
             }
             break;
@@ -517,18 +512,23 @@ static bool parse_one(const json& j, SettingSchema& out, const std::string& cont
     return true;
 }
 
-bool SettingsManager::parse_schema_array(const json& node,
-                                         std::vector<SettingSchema>& out,
-                                         const std::string& context) {
+bool SettingsManager::parse_schema_array(
+        const json& node,
+        std::vector<SettingSchema>& out,
+        const std::string& context,
+        std::vector<std::pair<LogLevel, std::string>>* warnings) {
     out.clear();
     if (node.is_null()) return true;
     if (!node.is_array()) {
-        Logger::warn("Settings: {} 'settings' is not an array — ignoring", context);
+        schema_warn(warnings, "Settings: {} 'settings' is not an array — ignoring",
+                    context);
         return false;
     }
     for (size_t i = 0; i < node.size(); ++i) {
         SettingSchema s;
-        if (parse_one(node[i], s, context + "[" + std::to_string(i) + "]"))
+        if (parse_one(node[i], s,
+                      context + "[" + std::to_string(i) + "]",
+                      warnings))
             out.push_back(std::move(s));
     }
     return true;

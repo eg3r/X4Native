@@ -20,14 +20,26 @@
 #include <vector>
 
 #include <x4native_extension.h>
+#include "logger.h"
 #include "settings_manager.h"
 #include "x4native_defs.h"
+
+#include <utility>
 
 namespace x4n {
 
 struct ExtensionInfo {
-    std::string name;
-    std::string extension_id;   // X4 extension ID from content.xml (for IsExtensionEnabled check)
+    // Canonical identifier — content.xml <content id="..."> attribute.
+    // X4 enforces uniqueness of this id across enabled extensions. Use it
+    // for every framework-internal key (logs, stash, settings, events).
+    std::string extension_id;
+    // Human-facing name — content.xml <content name="..."> attribute.
+    // Used for log prefixes and UI only; never as an identity key.
+    std::string display_name;
+    // Deprecated: the "name" field from x4native.json. Parsed for backward
+    // compatibility but ignored in favour of content.xml fields. Kept only
+    // so we can log a deprecation warning if present.
+    std::string json_name;
     std::string path;           // Absolute path to the extension's folder
     std::string dll_path;       // Absolute path to the extension DLL (original, never locked)
     std::string dll_live_path;  // Copy that is actually LoadLibrary'd (deleted on unload)
@@ -52,6 +64,11 @@ struct ExtensionInfo {
     // The authoritative data lives in SettingsManager, keyed by extension_id.
     // This vector is only used to hand the schema off during registration.
     std::vector<SettingSchema> settings_schema;
+
+    // Warnings accumulated during discover/parse before the extension's own
+    // log file exists. Flushed into the extension log as the first entries
+    // once load_extension opens it. Always also written to the framework log.
+    std::vector<std::pair<LogLevel, std::string>> pending_warnings;
 
     // API struct for this extension — persists for the extension's lifetime.
     // Extensions store a pointer to this during x4native_init().

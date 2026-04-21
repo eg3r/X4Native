@@ -15,8 +15,11 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <variant>
 #include <vector>
+
+#include "logger.h"
 
 #include "x4native_defs.h"
 
@@ -93,9 +96,17 @@ public:
 
     // JSON helpers for parse_config / loaded_extensions_json.
     // Returns true if `node` held a valid array; empty array → ok, returns true.
-    static bool parse_schema_array(const nlohmann::json& node,
-                                   std::vector<SettingSchema>& out,
-                                   const std::string& context);
+    //
+    // `warnings` (optional): per-extension buffer that collects parse-time
+    // diagnostics. When provided, issues are pushed here instead of (or in
+    // addition to) the framework logger — the caller flushes these into the
+    // extension's own log file once it's open. Pass nullptr for the legacy
+    // "log straight to framework log" behaviour.
+    static bool parse_schema_array(
+        const nlohmann::json& node,
+        std::vector<SettingSchema>& out,
+        const std::string& context,
+        std::vector<std::pair<LogLevel, std::string>>* warnings = nullptr);
 
 private:
     using Map = std::unordered_map<std::string, ExtensionSettings>;

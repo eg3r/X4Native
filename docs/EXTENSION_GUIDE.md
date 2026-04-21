@@ -22,7 +22,7 @@ extensions/x4native_mymod/
 
 ### content.xml
 
-Standard X4 extension descriptor. Must declare `x4native` as a dependency:
+Standard X4 extension descriptor. Must declare `x4native` as a dependency. The `id` attribute is the **canonical unique identifier** — X4Native keys all routing (logs, stash, scoped events, user settings) on it.
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -44,7 +44,6 @@ Tells the framework where to find your DLL and how to load it:
 
 ```json
 {
-    "name": "mymod",
     "library": "native\\x4native_mymod.dll",
     "priority": 100,
     "min_api_version": 1
@@ -53,13 +52,14 @@ Tells the framework where to find your DLL and how to load it:
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `name` | Yes | Extension identifier (used in logs) |
 | `library` | Yes | Relative path to your DLL |
 | `priority` | No | Load order (lower = earlier, default 0) |
 | `min_api_version` | No | Minimum framework API version required |
 | `autoreload` | No | `true` → watch DLL for changes and hot-reload in-place (default `false`) |
-| `logfile` | No | Log filename inside your extension folder (default `<name>.log`). Must be a relative path. |
+| `logfile` | No | Log filename inside `<profile>\x4native\` (default `<extension_id>.log`). Must be a relative name. |
 | `settings` | No | Array of user-configurable settings surfaced in **Settings → Extensions → `…`** and persisted per-user. See [Settings](#settings). |
+
+> `name` was required in earlier versions and is now ignored — extension identity and the log prefix are read from `content.xml`. Leaving it in place produces a one-line deprecation warning.
 
 ## Minimal Extension
 
@@ -180,7 +180,7 @@ x4n::bridge_lua_event("playerUndocked", "on_player_undocked");
 
 // Subscribe — string param from Lua is forwarded automatically
 x4n::on("on_player_undocked", [](const char* param) {
-    x4n::log::info("Player undocked (param: %s)", param ? param : "none");
+    x4n::log::info("Player undocked (param: {})", param ? param : "none");
 });
 
 // Or subscribe without params if you don't need them
@@ -220,7 +220,7 @@ X4N_EXTENSION {
     });
 
     x4n::on("on_object_destroyed", [](const char* param) {
-        x4n::log::info("Destroyed: %s", param ? param : "unknown");
+        x4n::log::info("Destroyed: {}", param ? param : "unknown");
     });
 }
 ```
@@ -242,12 +242,12 @@ Every MD event type has a data struct and a pair of subscription functions:
 ```cpp
 // Subscribe to events — returns subscription ID
 int id = x4n::md::on_killed_after([](const x4n::md::KilledData& e) {
-    x4n::log::info("Entity %llu destroyed by %llu", e.source_id, e.killer);
+    x4n::log::info("Entity {} destroyed by {}", e.source_id, e.killer);
 });
 
 int id2 = x4n::md::on_faction_relation_changed_after(
     [](const x4n::md::FactionRelationChangedData& e) {
-        x4n::log::info("Faction relation changed at t=%.1f", e.timestamp);
+        x4n::log::info("Faction relation changed at t={:.1f}", e.timestamp);
     });
 
 // Unsubscribe (same as named events)
@@ -321,12 +321,12 @@ X4N_EXTENSION {
     x4n::on("on_game_loaded", [] {
         g_sub_killed = x4n::md::on_killed_after(
             [](const x4n::md::KilledData& e) {
-                x4n::log::info("Destroyed: entity %llu by %llu", e.source_id, e.killer);
+                x4n::log::info("Destroyed: entity {} by {}", e.source_id, e.killer);
             });
 
         g_sub_owner = x4n::md::on_sector_changed_owner_after(
             [](const x4n::md::SectorChangedOwnerData& e) {
-                x4n::log::info("Sector %llu changed owner", e.sector_changing_ownership);
+                x4n::log::info("Sector {} changed owner", e.sector_changing_ownership);
             });
     });
 }
@@ -350,50 +350,49 @@ X4N_SHUTDOWN {
 
 ### Logging
 
-Each extension writes to its own log file inside its folder (`<name>.log` by default, rotated on each load — keeps `.1`–`.4` backups). No setup required; the framework opens the file before your `X4N_EXTENSION` body runs.
+Each extension writes to its own log file at `<X4 profile>\x4native\<extension_id>\<extension_id>.log`. Rotated on each load — keeps `.1`–`.4` backups. No setup required; the framework opens the file before your `X4N_EXTENSION` body runs. All writes by an extension stay inside its own subfolder — absolute paths and `..` segments passed to `set_log_file` / `to_file` are rejected with a warning.
+
+The API is **sink-first, level-second**, using `std::format` (`{}` placeholders, not `%s`):
 
 ```cpp
-// Default: logs to extensions/x4native_mymod/mymod.log
-x4n::log::debug("value = %d", 42);
-x4n::log::info("loaded v1.0");           // single string — always safe
-x4n::log::info("count = %d", count);    // int arg — always safe
-x4n::log::warn("something odd");
-x4n::log::error("failed: %d", error_code);
+#include <x4n_log.h>
 
-// Route one message to the shared x4native.log instead
-x4n::log::info("framework-level note", false);
+// Default sink: your extension's own log.
+x4n::log::info("loaded v1.0");                // plain string
+x4n::log::info("count = {}", count);          // formatted
+x4n::log::warn("odd: {:.3f}", value);
+x4n::log::error("failed: {}", error_code);
+x4n::log::debug("value = {}", 42);
 
-// One-shot write to a named file inside the extension folder
-x4n::log::info("detailed trace", "verbose.log");
+// Sink: framework log (<profile>\x4native\x4native.log).
+x4n::log::global.info("framework-level note");
 
-// Redirect the extension's log to a different file (call during X4N_EXTENSION)
+// Sink: one-shot write to a named file, scoped to this extension:
+//   <profile>\x4native\<extension_id>\events.log
+x4n::log::to_file("events.log").info("event: {}", id);
+
+// Redirect this extension's default log file.
 x4n::log::set_log_file("mymod_v2.log");
 ```
 
-The `logfile` field in `x4native.json` sets an alternative default filename at config level (must be a relative path — resolved inside the extension folder):
+`logfile` in `x4native.json` sets an alternative default filename inside your extension's subfolder (`<profile>\x4native\<extension_id>\`). Must be a relative name with no `..` segments:
 
 ```json
 {
-    "name": "mymod",
     "library": "native\\x4native_mymod.dll",
-    "logfile": "logs\\mymod.log"
+    "logfile": "mymod_v2.log"
 }
 ```
 
-> **Warning — `const char*` second argument is always a filename**: The compiler resolves `log::info(a, b)` to the filename overload whenever `b` is `const char*`, regardless of whether `a` contains `%s`. This is a C++ overload resolution rule: non-template functions beat templates on equal matches.
+> **Migration from the old API** (removed, not deprecated):
+> | Old | New |
+> |---|---|
+> | `log::info("msg %s", str)` | `log::info("msg {}", str)` |
+> | `log::info("msg", false)` | `log::global.info("msg")` |
+> | `log::info("msg", "extra.log")` | `log::file("extra.log").info("msg")` |
+> | `log::info("msg", true)` | `log::info("msg")` *(default is already the ext log)* |
 >
-> ```cpp
-> // WRONG — "mypath" is treated as a filename, not a format arg:
-> x4n::log::info("path: %s", some_path.c_str());   // creates file named by some_path!
->
-> // CORRECT — embed strings directly, or use a non-const-char* second arg:
-> x4n::log::info(("path: " + some_path).c_str());  // string concat, single arg
-> x4n::log::info("count: %d", some_int);           // int second arg — template wins
-> ```
->
-> The `bool` and named-file overloads are unambiguous. The ambiguity only arises when the second argument is `const char*`.
-
-Uses printf-style formatting for numeric and multi-argument calls.
+> The old printf-style variadic had a silent-footgun: `log::info("path: %s", some_path.c_str())` resolved to the filename overload, creating a file named after the runtime value of `some_path`. The new API has no such ambiguity — filenames are always the first positional arg of a named `file()` sink. Scoped enums must be cast to an underlying integer before formatting (`std::format` requires this).
 
 ### Game Functions
 
@@ -435,7 +434,7 @@ Intercept game function calls with before/after hooks:
 // Before-hook: args by reference, can modify or skip the original
 static void before_fn(x4n::hook::HookControl& ctl,
                       UniverseID& id, uint32_t& count) {
-    x4n::log::info("intercepted call with id=%llu", id);
+    x4n::log::info("intercepted call with id={}", id);
     // ctl.skip_original = 1;  // skip the real function
 }
 
@@ -494,7 +493,7 @@ x4n::visibility::set_radar_visible(entity_id, false);  // direct byte write
 
 // Radar change event — standard event system, fires on enter/leave radar range
 int h = x4n::on("on_radar_changed", [](const X4RadarChangedEvent* e) {
-    x4n::log::info("radar: %llu -> %d", e->entity_id, (int)e->visible);
+    x4n::log::info("radar: {} -> {}", e->entity_id, e->visible);
 });
 x4n::off(h);
 ```
@@ -510,7 +509,7 @@ Use stash to preserve state across reloads without disk I/O:
 x4n::stash::set("counter", 42);
 int val = 0;
 if (x4n::stash::get("counter", &val))
-    x4n::log::info("Restored counter: %d", val);
+    x4n::log::info("Restored counter: {}", val);
 
 // Strings
 x4n::stash::set_string("name", "my_extension");
@@ -542,9 +541,9 @@ x4n::stash::clear();  // only clears YOUR extension's keys
 | Max size | Process memory (no artificial limit) |
 ## Settings
 
-Extensions can declare **user-configurable settings** that appear in the vanilla X4 menu at **Settings → Extensions → select your extension → `…`**, directly under the built-in **Enabled** toggle. Values are persisted per-user in
-`<X4 profile>/x4native/<extension_id>.user.json`
-(e.g. `Documents\Egosoft\X4\<account>\x4native\x4native_mymod.user.json`),
+Extensions can declare **user-configurable settings** that appear in the vanilla X4 menu at **Settings → Extensions → select your extension → `…`**, directly under the built-in **Enabled** toggle. Values are persisted per-user at
+`<X4 profile>/x4native/<extension_id>/settings.user.json`
+(e.g. `Documents\Egosoft\X4\<account>\x4native\x4native_mymod\settings.user.json`),
 not in your extension folder — they survive extension updates, Steam Workshop re-syncs, and Windows user switching.
 
 ### Declaring settings

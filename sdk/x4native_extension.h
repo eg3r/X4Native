@@ -207,7 +207,14 @@ typedef struct X4NativeAPI {
     void        (*stash_clear)(const char* ns);
 
     // --- Per-extension context (set by framework during init) ---
-    const char* _ext_name;              // Extension name (auto-used by x4n::stash as namespace)
+    // Canonical unique identifier — content.xml root <content id="..."> attribute.
+    // X4 enforces uniqueness of this id across enabled extensions. All framework
+    // routing (stash namespacing, scoped events, log files, user settings) is
+    // keyed on this.
+    const char* _ext_id;
+    // Human-facing name — content.xml <content name="..."> attribute. Used for
+    // log line prefixes and UI, never for identity matching.
+    const char* _ext_display_name;
     intptr_t    _ext_priority;          // Load priority
     void*       _ext_subscription_ids;  // vector<int>* — event subscription IDs for auto-cleanup
     void*       _ext_log_handle;        // HANDLE — per-extension log file
@@ -240,7 +247,7 @@ typedef struct X4NativeAPI {
     void        (*set_setting_string)(const char* key, const char* value,
                                       void* _api_ptr);
 
-    void* _reserved[5];
+    void* _reserved[3];
 } X4NativeAPI;
 
 // ---- Required exports from extension DLLs --------------------------------

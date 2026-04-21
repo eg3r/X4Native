@@ -61,7 +61,7 @@ X4N_EXTENSION {
     x4n::on("on_game_loaded", [] {
         auto* game = x4n::game();
         UniverseID player = game->GetPlayerID();
-        x4n::log::info("Player ID: %llu", player);
+        x4n::log::info("Player ID: {}", player);
     });
 }
 

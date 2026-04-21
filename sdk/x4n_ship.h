@@ -130,11 +130,8 @@ class Ship {
         AlignedStringView sv{ order_id, std::strlen(order_id) };
         void* result = g->CreateOrderInternal(comp_, &sv, static_cast<int>(mode), 0);
         if (!result) {
-            char buf[128];
-            std::snprintf(buf, sizeof(buf),
-                "x4n::ship: create_order('%s') returned null. entity=%p",
-                order_id, (void*)comp_);
-            x4n::log::info(buf);
+            x4n::log::info("x4n::ship: create_order('{}') returned null. entity={}",
+                           order_id, static_cast<void*>(comp_));
         }
         return result;
     }

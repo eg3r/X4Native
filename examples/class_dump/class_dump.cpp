@@ -163,7 +163,7 @@ static void dump_event_types(const std::string& base_path) {
                 named++;
             }
         }
-        x4n::log::info("class_dump: PropertyChange type table — %u entries, %u with names",
+        x4n::log::info("class_dump: PropertyChange type table — {} entries, {} with names",
                        table_count, named);
     } else {
         x4n::log::warn("class_dump: PropertyChange type table not found in .rdata");
@@ -202,8 +202,8 @@ static void dump_event_types(const std::string& base_path) {
         }
     }
 
-    x4n::log::info("class_dump: RTTI scan — %u COLs checked, %u event classes found",
-                   cols_checked, static_cast<uint32_t>(rtti_entries.size()));
+    x4n::log::info("class_dump: RTTI scan — {} COLs checked, {} event classes found",
+                   cols_checked, rtti_entries.size());
 
     // ---- Source 3: XSD event name descriptor scan ----
     // Scan .rdata for "event_*" string pointers paired with descriptor IDs.
@@ -232,8 +232,8 @@ static void dump_event_types(const std::string& base_path) {
         descid_to_xsd[desc_id] = std::string(str, len);
     }
 
-    x4n::log::info("class_dump: found %u unique event_* descriptor entries",
-                   static_cast<uint32_t>(descid_to_xsd.size()));
+    x4n::log::info("class_dump: found {} unique event_* descriptor entries",
+                   descid_to_xsd.size());
 
     // ---- Merge and write CSV ----
     std::set<uint32_t> all_ids;
@@ -259,8 +259,8 @@ static void dump_event_types(const std::string& base_path) {
         }
     }
 
-    x4n::log::info("class_dump: merged %u event types → event_type_ids.csv",
-                   static_cast<uint32_t>(all_ids.size()));
+    x4n::log::info("class_dump: merged {} event types → event_type_ids.csv",
+                   all_ids.size());
 }
 
 static void on_game_loaded() {
@@ -299,7 +299,7 @@ static void on_game_loaded() {
     {
         std::ofstream f(base + "class_ids.csv");
         if (!f) {
-            x4n::log::error("class_dump: could not open %sclass_ids.csv for writing", base.c_str());
+            x4n::log::error("class_dump: could not open {}class_ids.csv for writing", base);
             return;
         }
         f << "id,name\n";
@@ -314,7 +314,7 @@ static void on_game_loaded() {
     {
         std::ofstream f(base + "class_matrix.csv");
         if (!f) {
-            x4n::log::error("class_dump: could not open %sclass_matrix.csv for writing", base.c_str());
+            x4n::log::error("class_dump: could not open {}class_matrix.csv for writing", base);
             return;
         }
         f << "class1name,class1id,class2name,class2id,is_subclass\n";
@@ -327,8 +327,8 @@ static void on_game_loaded() {
         }
     }
 
-    x4n::log::info("class_dump: wrote %u unique classes (%u pairs) → %s",
-                   static_cast<uint32_t>(ids.size()), filled, base.c_str());
+    x4n::log::info("class_dump: wrote {} unique classes ({} pairs) → {}",
+                   ids.size(), filled, base);
     x4n::log::info("class_dump: files: class_ids.csv, class_matrix.csv");
 }
 

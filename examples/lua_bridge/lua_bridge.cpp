@@ -10,15 +10,15 @@
 #include <x4n_log.h>
 
 static void on_undocked(const char* param) {
-    x4n::log::info("lua_bridge: player undocked (param: %s)", param ? param : "none");
+    x4n::log::info("lua_bridge: player undocked (param: {})", param ? param : "none");
 }
 
 static void on_conversation_finished(const char* param) {
-    x4n::log::info("lua_bridge: conversation finished (param: %s)", param ? param : "none");
+    x4n::log::info("lua_bridge: conversation finished (param: {})", param ? param : "none");
 }
 
 static void on_saved(const char* param) {
-    x4n::log::info("lua_bridge: game was saved (param: %s)", param ? param : "none");
+    x4n::log::info("lua_bridge: game was saved (param: {})", param ? param : "none");
 }
 
 static void on_game_loaded() {

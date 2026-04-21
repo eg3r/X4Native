@@ -1,32 +1,17 @@
 // ---------------------------------------------------------------------------
-// x4native_entity_inspector — Deep Entity Inspection Example
+// x4native_entity_inspector — Demo of entity reflection and SDK helpers
 //
-// Demonstrates the X4Native SDK's low-level entity access APIs:
-//   - x4n::entity        — find_component, get_component_macro, get_spawntime
-//   - x4n::visibility    — radar, forced radar, known-to-all, faction counts
-//   - x4n::math          — advance_seed (LCG), fnv1a_lower (hash)
-//   - x4n::rooms         — roomtype_name enum conversion
-//   - x4n::plans         — resolve_macro, resolve_connection
-//   - x4n::memory        — game_alloc (SMem pool)
-//   - X4Component struct — parent, combined_seed, exists flag (Object-hierarchy only)
-//   - Vtable-based GetClassID + IsOrDerivedFromClassID (universal, all entity types)
-//   - X4RadarChangedEvent — radar visibility change subscription
-//   - X4NativeFrameUpdate — native frame tick with timing data
-//
-// All of these use the RVA-resolved internal functions and the hand-authored
-// types from x4_manual_types.h. This example shows how extension authors can
-// inspect game entities far beyond what the public C FFI exposes.
+// Walks the player + player ship periodically, printing class/macro/visibility/
+// spawn data via the X4Native SDK wrappers.
 // ---------------------------------------------------------------------------
 #include <x4native.h>
 
-// Subscription handles
 static int g_sub_loaded      = 0;
 static int g_sub_radar       = 0;
 static int g_sub_native_tick = 0;
 
-// Periodic inspection state
 static double g_accum = 0.0;
-static constexpr double INSPECT_INTERVAL = 10.0;  // seconds
+static constexpr double INSPECT_INTERVAL = 15.0;  // seconds
 
 
 // ---------------------------------------------------------------------------
@@ -35,7 +20,7 @@ static constexpr double INSPECT_INTERVAL = 10.0;  // seconds
 static void inspect_entity(uint64_t id, const char* label) {
     auto* comp = x4n::entity::find_component(id);
     if (!comp) {
-        x4n::log::warn("inspector: [%s] id=%llu — could not resolve component", label, id);
+        x4n::log::warn("inspector: [{}] id={} — could not resolve component", label, id);
         return;
     }
 
@@ -45,8 +30,9 @@ static void inspect_entity(uint64_t id, const char* label) {
     // --- Macro name via definition interface vtable (universal) ---
     const char* macro = x4n::entity::get_component_macro(comp);
 
-    x4n::log::info("inspector: [%s] id=%llu class=%u(%s) macro=%s",
-                   label, id, cls, x4n::entity::get_class_name(id),
+    x4n::log::info("inspector: [{}] id={} class={}({}) macro={}",
+                   label, id, static_cast<uint32_t>(cls),
+                   x4n::entity::get_class_name(id),
                    macro ? macro : "(null)");
 
     // --- Object-hierarchy fields (only valid if IS-A "object") ---
@@ -60,12 +46,12 @@ static void inspect_entity(uint64_t id, const char* label) {
         int64_t combined_seed = *reinterpret_cast<int64_t*>(
             reinterpret_cast<uintptr_t>(comp) + X4_COMPONENT_OFFSET_COMBINED_SEED);
 
-        x4n::log::info("inspector: [%s]   object: alive=%s parent=%llu seed=%lld",
-                       label, alive ? "yes" : "no", parent_id, combined_seed);
+        x4n::log::info("inspector: [{}]   object: alive={} parent={} seed={}",
+                       label, alive, parent_id, combined_seed);
 
         if (combined_seed != 0) {
             uint64_t next = x4n::math::advance_seed(static_cast<uint64_t>(combined_seed));
-            x4n::log::debug("inspector: [%s]   advance_seed(%lld) = %llu",
+            x4n::log::debug("inspector: [{}]   advance_seed({}) = {}",
                             label, combined_seed, next);
         }
 
@@ -76,8 +62,8 @@ static void inspect_entity(uint64_t id, const char* label) {
         bool known_all   = x4n::visibility::get_known_to_all(id);
         size_t fac_count = x4n::visibility::get_known_factions_count(id);
 
-        x4n::log::info("inspector: [%s]   visibility: radar=%d forced=%d "
-                       "map=%d known_all=%d factions=%zu",
+        x4n::log::info("inspector: [{}]   visibility: radar={} forced={} "
+                       "map={} known_all={} factions={}",
                        label, radar, forced, map_vis, known_all, fac_count);
     }
 
@@ -87,7 +73,7 @@ static void inspect_entity(uint64_t id, const char* label) {
         bool known_all   = x4n::visibility::get_space_known_to_all(id);
         size_t fac_count = x4n::visibility::get_space_known_factions_count(id);
 
-        x4n::log::info("inspector: [%s]   space visibility: known_all=%d factions=%zu",
+        x4n::log::info("inspector: [{}]   space visibility: known_all={} factions={}",
                        label, known_all, fac_count);
     }
 
@@ -95,7 +81,7 @@ static void inspect_entity(uint64_t id, const char* label) {
     if (x4n::entity::is_a(comp, x4n::GameClass::Container)) {
         double spawn = x4n::entity::get_spawntime(id);
         if (spawn >= 0.0)
-            x4n::log::info("inspector: [%s]   spawntime=%.1f", label, spawn);
+            x4n::log::info("inspector: [{}]   spawntime={:.1f}", label, spawn);
     }
 }
 
@@ -108,20 +94,20 @@ static void demo_plan_resolution() {
     void* macro_ptr = x4n::plans::resolve_macro(macro_name);
 
     if (macro_ptr) {
-        x4n::log::info("inspector: resolve_macro('%s') = %p", macro_name, macro_ptr);
+        x4n::log::info("inspector: resolve_macro('{}') = {}", macro_name, macro_ptr);
 
         // Attempt to resolve a connection on this macro
         void* conn = x4n::plans::resolve_connection(macro_ptr, "connection_build01");
-        x4n::log::info("inspector:   resolve_connection('connection_build01') = %p",
+        x4n::log::info("inspector:   resolve_connection('connection_build01') = {}",
                        conn);
     } else {
-        x4n::log::debug("inspector: resolve_macro('%s') = nullptr (macro not loaded)",
+        x4n::log::debug("inspector: resolve_macro('{}') = nullptr (macro not loaded)",
                         macro_name);
     }
 
     // FNV-1a hash demo
     uint64_t hash = x4n::math::fnv1a_lower("connection_build01");
-    x4n::log::info("inspector: fnv1a_lower('connection_build01') = 0x%llX", hash);
+    x4n::log::info("inspector: fnv1a_lower('connection_build01') = {:#x}", hash);
 }
 
 // ---------------------------------------------------------------------------
@@ -135,7 +121,7 @@ static void demo_room_types() {
     };
     for (auto rt : samples) {
         const char* name = x4n::rooms::roomtype_name(rt);
-        x4n::log::info("inspector:   roomtype %d = '%s'", (int)rt,
+        x4n::log::info("inspector:   roomtype {} = '{}'", (int)rt,
                        name ? name : "(none/sentinel)");
     }
 }
@@ -149,9 +135,10 @@ static void demo_game_alloc() {
     // intentional for demo — the game's pool will reclaim on shutdown).
     auto* entry = x4n::memory::game_alloc<X4PlanEntry>();
     if (entry) {
-        x4n::log::info("inspector: game_alloc<X4PlanEntry>() = %p "
-                       "(sizeof=%zu, alignof=%zu)",
-                       entry, sizeof(X4PlanEntry), alignof(X4PlanEntry));
+        x4n::log::info("inspector: game_alloc<X4PlanEntry>() = {} "
+                       "(sizeof={}, alignof={})",
+                       static_cast<void*>(entry),
+                       sizeof(X4PlanEntry), alignof(X4PlanEntry));
     } else {
         x4n::log::warn("inspector: game_alloc<X4PlanEntry>() = nullptr "
                        "(GameAlloc not available)");
@@ -165,8 +152,8 @@ static void on_radar_changed(const X4RadarChangedEvent* e) {
     if (!e) return;
 
     const char* macro = x4n::entity::get_component_macro(e->entity_id);
-    x4n::log::info("inspector: radar changed — entity=%llu visible=%d macro=%s",
-                   e->entity_id, (int)e->visible,
+    x4n::log::info("inspector: radar changed — entity={} visible={} macro={}",
+                   e->entity_id, e->visible,
                    macro ? macro : "(null)");
 }
 
@@ -234,7 +221,7 @@ static void on_game_loaded() {
     demo_game_alloc();
 
     x4n::log::info("inspector: === demos complete — periodic inspection active "
-                   "(every %.0fs) ===", INSPECT_INTERVAL);
+                   "(every {:.0f}s) ===", INSPECT_INTERVAL);
     g_accum = 0.0;
 }
 
@@ -249,7 +236,7 @@ X4N_EXTENSION {
     g_sub_radar       = x4n::on("on_radar_changed",         on_radar_changed);
     g_sub_native_tick = x4n::on("on_native_frame_update",   on_native_tick);
 
-    x4n::log::info("entity_inspector: subscribed (loaded=%d, radar=%d, tick=%d)",
+    x4n::log::info("entity_inspector: subscribed (loaded={}, radar={}, tick={})",
                    g_sub_loaded, g_sub_radar, g_sub_native_tick);
 }
 

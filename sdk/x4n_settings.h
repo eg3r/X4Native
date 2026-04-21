@@ -5,7 +5,7 @@
 //
 // Extensions declare their configurable settings in x4native.json under a
 // "settings" array. Current values persist in
-//   <profile>\x4native\<extension_id>.user.json
+//   <profile>\x4native\<extension_id>\settings.user.json
 // and are editable by the player via the vanilla
 // Settings → Extensions → "..." → submenu.
 //
@@ -110,15 +110,26 @@ namespace detail {
     }
 }
 
-/// Subscribe to setting changes. The callback fires for every extension —
-/// compare `info.extension_id` to filter. Returns the subscription id; pass
-/// to x4n::off() to unsubscribe.
+/// Subscribe to setting changes **for this extension only**. The callback
+/// fires whenever one of your own keys is written (via UI or code). Returns
+/// the subscription id; pass to x4n::off() to unsubscribe.
+///
+/// Under the hood, subscribes to "on_setting_changed:<your extension_id>".
 inline int on_setting_changed(void (*cb)(const X4NativeSettingChanged& info)) {
     auto* api = ::x4n::detail::g_api;
-    return api->subscribe("on_setting_changed",
+    char name[256];
+    std::snprintf(name, sizeof(name), "on_setting_changed:%s",
+                  api->_ext_id ? api->_ext_id : "");
+    return api->subscribe(name,
                           detail::trampoline_setting_changed,
                           reinterpret_cast<void*>(cb),
                           api);
 }
+
+// The core also fires the unscoped "on_setting_changed" for observers that
+// want to see every setting change regardless of extension. If you ever need
+// that, subscribe directly:
+//   api->subscribe("on_setting_changed", trampoline_setting_changed, ...);
+// It's not wrapped here to keep the happy-path API minimal.
 
 } // namespace x4n
