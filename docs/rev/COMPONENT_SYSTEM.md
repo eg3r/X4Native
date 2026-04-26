@@ -184,7 +184,7 @@ The main vtable at +0x00 has ~800+ entries. Key slots (byte offsets):
 | 566 | +4528 | `GetClassID() -> uint` (120=sentinel) | `GetComponentClass` |
 | 567 | +4536 | `IsClassID(classid) -> bool` | `GetStationModules`, `ChildComponent_Enumerate` |
 | 568 | +4544 | `IsOrDerivedFromClassID(classid) -> bool` | `GetContextByClass`, `IsComponentClass` |
-| 595 | +4760 | `GetIDCode() -> std::string*` | `GetObjectIDCode` |
+| 597 | +4776 | `GetIDCode() -> std::string*` (build 606138) | `GetObjectIDCode` |
 | 643 | +5144 | `SetWorldTransform(...)` | `Component_ComputeWorldTransform` |
 | 648 | +5184 | `SetPosition(transform*)` | `SetObjectSectorPos` |
 | 676 | +5408 | `Destroy(reason, flags)` | `RemoveComponent` |

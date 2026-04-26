@@ -20,6 +20,7 @@
 
 #include "x4n_core.h"
 #include <cstdint>
+#include <string>
 
 namespace x4n { namespace entity {
 
@@ -129,6 +130,29 @@ inline double get_spawntime(const X4Component* comp) {
     if (!comp) return -1.0;
     return *reinterpret_cast<const double*>(
         reinterpret_cast<uintptr_t>(comp) + detail::offsets()->container_spawntime);
+}
+
+/// Get the visible "AAA-123" id-code for an Object-class entity.
+/// Returns owned std::string — empty for non-Object entities or invalid IDs.
+///
+/// The underlying FFI `GetObjectIDCode` returns `const char*` into a SHARED
+/// STATIC BUFFER that is invalidated by the next call. This wrapper copies
+/// immediately so callers can safely keep the string across further FFI
+/// calls (the static-buffer footgun is hidden inside).
+///
+/// Codes are stable across save/load (stored as a `std::string` field on the
+/// entity). They are pseudo-random per-savegame — NOT faction-derived.
+/// Class scope: any class derived from `Object` (game class 72): ships,
+/// stations, NPCs, dockingbays, asteroids, weapons, lockboxes, etc.
+/// Sectors / clusters / factions / wares have NO id-code; this returns "".
+///
+/// @stability HIGH — uses already-table-resolved GetObjectIDCode FFI.
+/// @verified v9.00 build 606138 (FFI x4_game_func_list.inc:938)
+inline std::string get_id_code(uint64_t universe_id) {
+    auto* g = game();
+    if (!g || !g->GetObjectIDCode) return {};
+    const char* p = g->GetObjectIDCode(universe_id);
+    return p ? std::string{p} : std::string{};
 }
 
 /// Walk the component's context chain upward and return the first ancestor
