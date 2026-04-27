@@ -45,6 +45,7 @@ X4GameOffsets s_offsets = {
     .frame_real_time       = nullptr,
     .frame_speed_mult      = nullptr,
     .component_registry    = nullptr,
+    .faction_registry      = nullptr,
     .game_universe         = nullptr,
     .session_seed          = nullptr,
     .construction_plan_db  = nullptr,
@@ -148,6 +149,7 @@ static void resolve_offset_pointers(uintptr_t base) {
     s_offsets.frame_real_time      = reinterpret_cast<double*>(base + X4_RVA_FRAME_REAL_TIME);
     s_offsets.frame_speed_mult     = reinterpret_cast<double*>(base + X4_RVA_FRAME_SPEED_MULT);
     s_offsets.component_registry   = reinterpret_cast<void*>(base + X4_RVA_COMPONENT_REGISTRY);
+    s_offsets.faction_registry     = reinterpret_cast<void*>(base + X4_RVA_FACTION_REGISTRY);
     s_offsets.game_universe        = reinterpret_cast<void*>(base + X4_RVA_GAME_UNIVERSE);
     s_offsets.session_seed         = reinterpret_cast<uint64_t*>(base + X4_RVA_SESSION_SEED);
     s_offsets.construction_plan_db = reinterpret_cast<void*>(base + X4_RVA_CONSTRUCTION_PLAN_DB);

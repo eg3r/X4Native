@@ -159,3 +159,44 @@ X4_FUNC(const char*, GetFactionBuildMethod, (const char* factionid))
 // Hooked by X4Native core to fire on_md_before/on_md_after per event type_id.
 // Verified: v9.00 build 603098, RVA 0x00958390
 X4_FUNC(void, EventQueue_InsertOrDispatch, (void* event_source, void* event_object, double timestamp, char immediate))
+
+// FactionRelation_LookupReasonID — resolves a `relationchangereason.*` string
+// to the integer reason ID consumed by FactionRelation_ApplyMutation.
+// Performs a memcmp-based binary search over a sorted table at 0x143C9A530
+// (BSS, populated by FactionRelation_InitReasonTable at startup). Each table
+// entry is a 24-byte {char* str_ptr, uint64_t str_len, int32_t reason_id}.
+// The first arg is documented as `void* unused` — pass nullptr; the second
+// arg is a string_view (pointer + length). Returns 0 on miss (default
+// reason). See `X4Native/docs/rev/FACTION_RELATIONS.md §3.2`.
+//
+// Use case: drift-protection wrapper for the companion-side fallback string
+// table in `companion/src/validation.rs::VALID_RELATION_REASONS`. Calling
+// the FFI lets us stay in lockstep with vanilla even if Egosoft adds new
+// reasons — fallback table remains as the offline-data path.
+//
+// Verified: v9.00 build 606138 docs at FACTION_RELATIONS.md (§3.2 + §10
+// table — note the table at line 499 lists 0x002CBF00; §3.2 header lists
+// 0x002CAE60). Per-build RVA must come from version_db. §3.2.F-4.
+X4_FUNC(int32_t, FactionRelation_LookupReasonID, (void* unused, const char* reason_str, uint64_t reason_len))
+
+// FactionRelation_GetFloat — direct NPC-NPC relation float reader.
+// Returns the [-1.0, +1.0] internal float between two FactionClass pointers.
+// Layered: probes the boost map (decay-checked) at FactionClass+640+80, falls
+// back to the base map at FactionClass+640+16. Returns 0.0 if neither has an
+// entry (true neutral). Returns ~+1.0 (constant Y) when a == b.
+//
+// SIDE-EFFECT: ages out expired boosts via FactionRelation_RemoveBoost during
+// the read (cleanup-on-read). Safe for UI-thread polling but means matrix
+// polling continuously gardens the boost map.
+//
+// Caller convention: rcx=a, rdx=b, returns float in xmm0. NOT exported.
+// Use case: galaxy-wide NPC-NPC relation matrix snapshot for X4Strategos
+// §4.1 Session 2a (~21 factions × 21 = 441 reads per cycle = trivial cost).
+//
+// Verified: v9.00 build 606138, RVA 0x0030F700. Per-build RVA must come from
+// version_db. Function size 0x37 bytes. See docs/rev/FACTION_RELATIONS.md §2.2.
+//
+// Declared with void* for SDK ABI compat (the X4_FUNC table is included into
+// game_api.cpp without x4_manual_types.h's full struct declarations). The
+// type-safe wrapper in x4n_faction.h casts to/from X4FactionClass*.
+X4_FUNC(float, FactionRelation_GetFloat, (void* faction_a, void* faction_b))

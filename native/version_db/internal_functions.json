@@ -388,6 +388,37 @@
       "900-604402": { "rva": "0x009599C0" },
       "900-605025": { "rva": "0x00957A20" },
       "900-606138": { "rva": "0x00959360" }
+    },
+    "FactionRelation_LookupReasonID": {
+      "_find_hints": {
+        "method": "string_search",
+        "steps": [
+          "1. Open IDA Pro on x4.exe; search Strings tab for 'relationchangereason.' (vanilla XSD prefix).",
+          "2. Each match is one entry in the sorted reason table at 0x143C9A530 (BSS).",
+          "3. Xref any entry's xrefs-to → finds the populator (FactionRelation_InitReasonTable) and the consumer.",
+          "4. The CONSUMER does memcmp-based binary search over 24-byte entries `{char* str, uint64 len, int32 reason_id}` — it's FactionRelation_LookupReasonID.",
+          "5. Verify: 2-arg function (rcx=void*unused, rdx=string_view*); returns int32 in eax; calls memcmp inside the loop.",
+          "6. Cross-check the docs at `X4Native/docs/rev/FACTION_RELATIONS.md §3.2`."
+        ],
+        "verify_strings": ["relationchangereason."]
+      },
+      "900-606138": { "rva": "0x002CBF00" }
+    },
+    "FactionRelation_GetFloat": {
+      "_find_hints": {
+        "method": "caller_chain_unique_size",
+        "steps": [
+          "1. Find SetFactionRelationToPlayerFaction (PE export) — it inlines the FNV-1+RBTree faction lookup.",
+          "2. From its body, identify the call site that reaches FactionRelation_ApplyMutation (large faction-event dispatcher with old/new float event payload).",
+          "3. Inside ApplyMutation, the FIRST callee that takes (rcx=this_faction, rdx=other_faction) and returns float in xmm0 is FactionRelation_GetFloat.",
+          "4. Verify: function is exactly ~0x37 bytes (very small, distinctive). Disassembly: `mov r8,rdx; cmp rdx,rcx; jnz <slow>; movss xmm0,Y; retn; <slow>: mov rax,gs:58h; mov rcx,[rcx+280h]; mov r9d,310h; add rcx,10h; mov rdx,[rax]; movsd xmm2,[r9+rdx]; mov rdx,r8; jmp FactionRelation_ReadRawFloat`.",
+          "5. Cross-check the docs at `X4Native/docs/rev/FACTION_RELATIONS.md §2.2`."
+        ],
+        "verify_strings": [],
+        "byte_sig": "4C 8B C2 48 3B D1 75 06 F3 0F 10 05",
+        "byte_sig_note": "Prologue (606138): mov r8,rdx; cmp rdx,rcx; jnz short; movss xmm0,Y. Distinctive — function-pair-equality fast path with movss xmm0,RIP-relative."
+      },
+      "900-606138": { "rva": "0x0030F700" }
     }
   }
 }

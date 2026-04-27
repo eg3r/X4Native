@@ -26,6 +26,7 @@
 //   #include <x4n_plans.h>          // x4n::plans::resolve_macro, plan_registry, plan_set_entries, ...
 //   #include <x4n_visibility.h>     // x4n::visibility::get_radar_visible, is_map_visible, ...
 //   #include <x4n_galaxy.h>         // x4n::galaxy::find_sector_by_macro, rebuild_cache, ...
+//   #include <x4n_faction.h>        // x4n::faction::find_class_by_id, get_relation, ...
 //   #include <x4n_sector.h>         // x4n::sector::Sector (sunlight, resources)
 //   #include <x4n_resources.h>      // x4n::resources::get_sector_resources (unfiltered)
 //   #include <x4n_module.h>         // x4n::module::Module (production/processing module wrapper)
@@ -68,6 +69,7 @@
 
 // Game domain helpers
 #include "x4n_entity.h"
+#include "x4n_faction.h"
 #include "x4n_math.h"
 #include "x4n_memory.h"
 #include "x4n_rooms.h"

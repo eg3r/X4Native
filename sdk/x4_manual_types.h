@@ -243,12 +243,73 @@ static_assert(offsetof(X4Component, exists)     == 0xD1, "X4Component::exists of
 // Component registry — opaque, accessed only via ComponentRegistry_Find.
 typedef struct X4ComponentRegistry_ X4ComponentRegistry;
 
+// --- X4FactionClass ---
+// Engine-side per-faction runtime object. Lifetime = game session (one
+// instance per faction; resolved by id-string via the FactionRegistry RBTree
+// — see x4n::faction::find_class_by_id).
+//
+// Only the +0x280 field is reverse-engineered so far (RelationData pointer
+// consumed by FactionRelation_GetFloat). Remaining bytes are opaque padding;
+// extend as more fields are RE'd. Never embed this type by value — only use
+// pointers, since the engine's full struct size is still TBD.
+//
+// @verified v9.00 build 606138 (RelationData offset confirmed by IDA at
+// FactionRelation_GetFloat RVA 0x0030F700: `mov rcx, [rcx+280h]`)
+#ifdef __cplusplus
+struct X4FactionClass {
+    uint8_t _opaque_prefix[0x280]; // +0x000..+0x27F: unresolved (faction header)
+    void*   relation_data;          // +0x280 (=+640): RelationData* — boost map
+                                   //   at +0x50 (boosts), base map at +0x10
+                                   //   (RelationDataBase). Consumed by
+                                   //   FactionRelation_GetFloat.
+    // ... remaining fields not yet reverse-engineered.
+};
+static_assert(offsetof(X4FactionClass, relation_data) == 0x280,
+    "X4FactionClass::relation_data offset mismatch");
+#else
+typedef struct X4FactionClass_ X4FactionClass;
+#endif
+
 // ---- Global data RVA: Component registry ----
 // Add to imagebase to get absolute address. Dereference to get the actual value.
 // WARNING: data address changes between builds. Re-verify on game updates.
 // FIND: Any caller of ComponentRegistry_Find — first param (rcx) loaded via MOV rcx,[rip+disp].
 // Verified: build 606138 (3 consistent callers)
 #define X4_RVA_COMPONENT_REGISTRY       0x06C80600  /* void** — g_ComponentRegistry */
+
+// ---- Global data RVA: Faction registry ----
+// Singleton holding all FactionClass pointers, keyed by id-string FNV-1 hash.
+// THE RVA HOLDS A POINTER SLOT (NOT THE STRUCT ITSELF) — same convention as
+// X4_RVA_COMPONENT_REGISTRY. Consumers must deref once to get the struct base.
+//
+// Layout verified 2026-04-27 by IDA disassembly of SetFactionRelationToPlayerFaction
+// (build 606138, RVA 0x0017F8D0): `mov rdx, cs:qword_146C80848` (explicit memory
+// load = pointer slot), `add rdx, 10h` → registry+16 = sentinel,
+// `mov rax, [rdx+8]` → registry+24 = root, `cmp [rax+20h], r11` → node key
+// is full uint64 at +0x20, `lea rdi, [rcx+30h]` → FactionClass* at node+0x30.
+//
+// Layout (offsets are relative to the dereferenced registry struct):
+//   +0x10  sentinel / end-of-tree node (struct member, not a pointer)
+//   +0x18  RBTree root pointer (qword*)
+//
+// Each node:
+//   +0x08  LEFT child  (qword*)
+//   +0x10  RIGHT child (qword*)
+//   +0x20  KEY  — FNV-1 hash of faction id, stored as uint64 (high 32 bits zero)
+//   +0x30  VALUE — FactionClass* (FactionClass+0x280 = RelationData*, whose
+//          +0x10 = RelationDataBase consumed by FactionRelation_GetFloat)
+//
+// FIND: Decompile any inlined faction-by-name lookup
+// (SetFactionRelationToPlayerFaction or GetFactionRelationStatus2). The first
+// immediate referenced via `MOV reg, [qword_<addr>]` (NOT `LEA`) is the slot.
+// Verified: build 606138 — see docs/rev/FACTION_RELATIONS.md §2.2.
+#define X4_RVA_FACTION_REGISTRY         0x06C80848  /* void** — pointer slot for g_FactionRegistry */
+#define X4_FACTION_REGISTRY_TREE_BASE   0x10        /* registry+16 — sentinel / end-of-tree */
+#define X4_FACTION_REGISTRY_TREE_ROOT   0x18        /* registry+24 — root node pointer */
+#define X4_FACTION_REGISTRY_NODE_LEFT   0x08        /* node+8  — left child  */
+#define X4_FACTION_REGISTRY_NODE_RIGHT  0x10        /* node+16 — right child */
+#define X4_FACTION_REGISTRY_NODE_KEY    0x20        /* node+32 — uint64 FNV-1 hash key */
+#define X4_FACTION_REGISTRY_NODE_VALUE  0x30        /* node+48 — FactionClass* */
 
 // ---- Component base struct offsets ----
 // IMPORTANT: Only offsets +0x00 through +0x44 are in the universal Component prefix.

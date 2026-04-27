@@ -34,6 +34,7 @@ typedef struct X4GameOffsets {
     double*   frame_real_time;          // X4_RVA_FRAME_REAL_TIME
     double*   frame_speed_mult;         // X4_RVA_FRAME_SPEED_MULT
     void*     component_registry;       // X4_RVA_COMPONENT_REGISTRY (ptr to registry ptr)
+    void*     faction_registry;         // X4_RVA_FACTION_REGISTRY (ptr to registry; tree at +16, root at +24)
     void*     game_universe;            // X4_RVA_GAME_UNIVERSE (ptr to universe ptr)
     uint64_t* session_seed;             // X4_RVA_SESSION_SEED
     void*     construction_plan_db;     // X4_RVA_CONSTRUCTION_PLAN_DB (ptr to plan DB ptr)
