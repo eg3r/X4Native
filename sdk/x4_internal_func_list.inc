@@ -165,9 +165,26 @@ X4_FUNC(void, EventQueue_InsertOrDispatch, (void* event_source, void* event_obje
 // Performs a memcmp-based binary search over a sorted table at 0x143C9A530
 // (BSS, populated by FactionRelation_InitReasonTable at startup). Each table
 // entry is a 24-byte {char* str_ptr, uint64_t str_len, int32_t reason_id}.
-// The first arg is documented as `void* unused` — pass nullptr; the second
-// arg is a string_view (pointer + length). Returns 0 on miss (default
+// First arg is documented as `void* unused` — pass nullptr. Second arg is a
+// **pointer to a 16-byte string_view struct** (NOT a separate ptr+len pair):
+//
+//     struct { const char* ptr; uint64_t len; }
+//
+// Same convention as `MacroRegistry_Lookup` above. Caller constructs the
+// struct on the stack and passes its address. Returns 0 on miss (default
 // reason). See `X4Native/docs/rev/FACTION_RELATIONS.md §3.2`.
+//
+// Crash-fix history (2026-04-29, dump X4_900_2026_04_29_21_33_53.dmp):
+// the original SDK declaration was `(void* unused, const char* reason_str,
+// uint64_t reason_len)` — three separate args. With that signature the
+// compiler emitted x64 ABI args RCX=null, RDX=ptr, R8=len, but vanilla's
+// function reads `*RDX` as the 16-byte struct. For "dealmaintenance" the
+// first 16 bytes of the string ("dealmaintenance\0") were interpreted as
+// (ptr=0x6e69616d6c616564, len=~0x65636e616e6574) — a non-canonical
+// pointer with a huge length, triggering an access violation in `memcmp`
+// inside the binary search (fault address 0xFFFFFFFFFFFFFFFF).
+// Fixed by aligning the SDK declaration with the vanilla calling
+// convention and updating the call site to construct a string_view struct.
 //
 // Use case: drift-protection wrapper for the companion-side fallback string
 // table in `companion/src/validation.rs::VALID_RELATION_REASONS`. Calling
@@ -177,7 +194,7 @@ X4_FUNC(void, EventQueue_InsertOrDispatch, (void* event_source, void* event_obje
 // Verified: v9.00 build 606138 docs at FACTION_RELATIONS.md (§3.2 + §10
 // table — note the table at line 499 lists 0x002CBF00; §3.2 header lists
 // 0x002CAE60). Per-build RVA must come from version_db. §3.2.F-4.
-X4_FUNC(int32_t, FactionRelation_LookupReasonID, (void* unused, const char* reason_str, uint64_t reason_len))
+X4_FUNC(int32_t, FactionRelation_LookupReasonID, (void* unused, const void* reason_string_view))
 
 // FactionRelation_GetFloat — direct NPC-NPC relation float reader.
 // Returns the [-1.0, +1.0] internal float between two FactionClass pointers.
