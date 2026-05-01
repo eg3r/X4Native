@@ -32,6 +32,7 @@
 #include <cstdint>
 #include <cstring>
 #include <cstdio>
+#include <vector>
 
 namespace x4n { namespace ship {
 
@@ -248,5 +249,52 @@ public:
         return create_order("SupplyFleet", mode) != nullptr;
     }
 };
+
+// ---- Fleet enumeration ----
+
+/// Per-class subordinate counts for a fleet commander. Excludes the
+/// commander itself; direct subordinates only (no recursion into a
+/// subordinate's own wing). Index by GameClass: S/M/L/XL.
+struct SubordinateCounts {
+    uint32_t s  = 0;
+    uint32_t m  = 0;
+    uint32_t l  = 0;
+    uint32_t xl = 0;
+    uint32_t total() const { return s + m + l + xl; }
+};
+
+/// Enumerate all direct subordinates of `commander_id` across all 10 fleet
+/// groups and bucket them by GameClass (S/M/L/XL). Subordinates that
+/// resolve to a non-ship component or to none of the four ship classes are
+/// silently skipped — the count reflects only commandable ships.
+///
+/// Returns zeroed counts if the game function table is unavailable or the
+/// commander has no subordinates.
+inline SubordinateCounts enumerate_subordinates_by_class(uint64_t commander_id) {
+    SubordinateCounts out;
+    auto* g = ::x4n::game();
+    if (!g) return out;
+    for (int group = 1; group <= 10; ++group) {
+        uint32_t n = g->GetNumSubordinatesOfGroup(commander_id, group);
+        if (n == 0) continue;
+        // Stack-bounded buffer for typical fleet sizes; falls back to a
+        // larger heap allocation if the wing exceeds 64 ships per group
+        // (rare — engine fleet caps are well below this).
+        uint64_t stack_buf[64];
+        std::vector<uint64_t> heap_buf;
+        uint64_t* buf = stack_buf;
+        if (n > 64) { heap_buf.resize(n); buf = heap_buf.data(); }
+        uint32_t got = g->GetSubordinatesOfGroup(buf, n, commander_id, group);
+        for (uint32_t j = 0; j < got; ++j) {
+            auto* sub = ::x4n::entity::find_component(buf[j]);
+            if (!sub) continue;
+            if      (::x4n::entity::is_a(sub, ::x4n::GameClass::ShipXl)) out.xl++;
+            else if (::x4n::entity::is_a(sub, ::x4n::GameClass::ShipL))  out.l++;
+            else if (::x4n::entity::is_a(sub, ::x4n::GameClass::ShipM))  out.m++;
+            else if (::x4n::entity::is_a(sub, ::x4n::GameClass::ShipS))  out.s++;
+        }
+    }
+    return out;
+}
 
 }} // namespace x4n::ship

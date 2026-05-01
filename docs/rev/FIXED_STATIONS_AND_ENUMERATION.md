@@ -284,12 +284,29 @@ UniverseID GetSectorControlStation(UniverseID sectorid);
 
 ### 9.2 What It Returns
 
-The UniverseID of the **container (typically a station) that houses the sector's owning faction's law-enforcement representative**. In practice, this is the station the game routes sector-level interactions to:
+The UniverseID of the **station IN the queried sector that owns the first/primary build admin module** — i.e. the claim asset that actually asserts sector ownership. Per-sector-distinct: different sectors of the same faction return different stations. NOT the faction's HQ (unless the sector happens to be the HQ sector), and NOT the faction-rep station (the rep lives on HQ and is a different concept from per-sector claim authority).
 
-- **Money destination** when the player buys a build plot in that sector (see `menu_station_configuration.lua:3411-3412`: `TransferPlayerMoneyTo(price, controlstation)` after `GetSectorControlStation(sector)`).
-- **Representative endpoint** for AI behaviors that target `this.trueowner.representative` (`interrupt.disengage.xml:98-99`, `fight.attack.object.bigtarget.xml:115-116`).
+In practice, the game uses it to route sector-level interactions to the asset that owns sector control:
 
-It is **not** "the biggest station in the sector" and **not** a generic "pick any station". It's specifically the rep-hosting container of the sector owner.
+- **Money destination** when the player buys a build plot in that sector. Both `menu_station_configuration.lua:3411-3412` and `ego_detailmonitor/menu_map.lua:4241-4242` call `GetSectorControlStation(sector)` and route the plot price via `TransferPlayerMoneyTo`. Money goes to the in-sector claim-bearing admin because that's the station collecting plot revenue for the territory.
+- **Representative endpoint** for AI behaviors that target `this.trueowner.representative` (`interrupt.disengage.xml:98-99`, `fight.attack.object.bigtarget.xml:115-116`). Resolves to the in-sector control station as the local face of the faction in that sector.
+
+It is **not** "the biggest station in the sector" and **not** "a generic / random station in the sector". Specifically the station bearing the first build admin / claim module.
+
+### 9.2.1 Implications for sector transfer (§4.5)
+
+`GetSectorControlStation` IS the right primitive for sector ownership transfer. Returns the in-sector primary claim-bearing station; transferring its ownership flips sector ownership.
+
+A future simplification of `LIB_FireSectorTransfer` (currently uses `find_station_by_true_owner` + per-station `canclaimownership` filter to enumerate ALL stations of the from-faction in the sector) could:
+1. Call `GetSectorControlStation(target_sector)` to identify the primary claim-bearer.
+2. Transfer it unconditionally — sector ownership flips.
+3. Iterate other in-sector stations for the disposition (`Keep`/`Transfer`/`Remove`) axis.
+
+Today's enumeration approach is correct and doesn't need this optimization for behaviour, but the SDK shortcut would make "transfer = sector flips" explicit at the wire layer instead of emergent from per-station claim logic.
+
+### 9.2.2 Decompile reinterpretation needed
+
+The decompiled flow at §9.3 below walks `galaxy+0x3A8` indexed by `owner` faction, then walks the result's container chain. My original write-up labeled the lookup as a "law-enforcement representative" registry (matching the function's log message strings) — but empirically the function returns a per-sector station, not the faction's singular global rep/HQ. So the data structure at `galaxy+0x3A8` is NOT a flat `faction → rep` map; it's something more complex (per-(faction, sector), or a structure that gets walked to surface the in-sector claim-bearer). The "rep" terminology in the log strings is misleading. Re-investigation needed to map the actual structure.
 
 ### 9.3 Decompiled Flow
 
