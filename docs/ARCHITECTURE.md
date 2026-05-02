@@ -14,6 +14,13 @@ X4Native uses a **proxy + core** two-DLL architecture to enable hot-reloading na
 **Copy-on-load:** The proxy copies `x4native_core.dll` to `x4native_core_live.dll` and loads the copy. The original is never locked — builds can overwrite it freely.
 
 ```mermaid
+---
+config:
+    layout: 'elk'
+    theme: 'neutral'
+    themeVariables:
+        lineColor: '#ff9100'
+---
 graph TB
     subgraph X4["X4: Foundations Process"]
         direction TB
@@ -55,6 +62,13 @@ graph TB
 The game bridge is: **MD XML cues → Lua events → DLL entry points**. Game lifecycle events flow from Mission Director scripts through `raise_lua_event` into the DLL layer.
 
 ```mermaid
+---
+config:
+    layout: 'elk'
+    theme: 'dark'
+    themeVariables:
+        lineColor: '#ff9100'
+---
 sequenceDiagram
     participant X4 as X4.exe
     participant MD as MD Script
@@ -146,6 +160,13 @@ A separate `on_game_started` event fires when `event_game_started` arrives via M
 ## Hot-Reload
 
 ```mermaid
+---
+config:
+    layout: 'elk'
+    theme: 'dark'
+    themeVariables:
+        lineColor: '#ff9100'
+---
 sequenceDiagram
     participant PROXY as Proxy DLL
     participant OLD as Old Core (in memory)

@@ -20,6 +20,8 @@
 #endif
 #include <windows.h>
 
+#include <cstdio>
+#include <cstring>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -146,6 +148,12 @@ static void proxy_stash_clear(const char* ns) {
 // Forward declarations (defined below with Lua-facing functions)
 static int proxy_raise_lua_event(const char* name, const char* param);
 static int proxy_register_lua_bridge(const char* lua_event, const char* cpp_event);
+static bool proxy_get_lua_property(const char* getter_fn, X4nLuaKey key,
+                                   const char* field, X4nLuaValueType vt,
+                                   void* out);
+static bool proxy_get_lua_property_str(const char* getter_fn, X4nLuaKey key,
+                                       const char* field,
+                                       char* out_buf, size_t buf_size);
 
 // ---------------------------------------------------------------------------
 // Path helpers
@@ -210,6 +218,8 @@ static bool load_core() {
     ctx.stash_get    = proxy_stash_get;
     ctx.stash_remove = proxy_stash_remove;
     ctx.stash_clear  = proxy_stash_clear;
+    ctx.get_lua_property     = proxy_get_lua_property;
+    ctx.get_lua_property_str = proxy_get_lua_property_str;
 
     if (g_core_init(&ctx) != 0) {
         OutputDebugStringA("X4Native proxy: core_init returned error\n");
@@ -291,6 +301,137 @@ static int proxy_raise_lua_event(const char* name, const char* param) {
     if (param) x4n::lua::pushstring(g_lua, param);
     else       x4n::lua::pushnil(g_lua);
     return x4n::lua::pcall(g_lua, 2, 0, 0);
+}
+
+// ---------------------------------------------------------------------------
+// Lua-property accessors: proxy_get_lua_property / _str
+//
+// Generic over Get*Data-style host C-funcs (GetWareData, GetComponentData,
+// future GetFactionData, …). SDK exposes typed inlines per domain
+// (x4n::ware::*, x4n::entity::*) — adding a new accessor never touches
+// proxy or core, only the SDK header. UI thread only.
+// ---------------------------------------------------------------------------
+// Resolve `getter_fn` and push (key, field). Returns false (and restores
+// stack) if any global is missing or pcall fails. On success leaves the
+// function and 2 args on the stack ready for pcall(2,1,0).
+//
+// UNIT64 keys go through ConvertStringToLuaID(tostring(uid)) — the engine's
+// Get*Data functions expect this opaque "Lua ID" form, NOT a bare
+// lua_Integer (verified empirically: lua_pushinteger produces a Lua number
+// that GetComponentData silently fails on, returning nil for every entity).
+// Vanilla pattern: menu_diplomacy.lua:1648, menu_interactmenu.lua:531/565/etc.
+// Resolve `getter_fn` and push (key, field). Returns false (and restores
+// stack) if any global is missing or pcall fails. On success leaves the
+// function and 2 args on the stack ready for pcall(2,1,0).
+//
+// UNIT64 keys go through ConvertStringToLuaID(tostring(uid)) — the engine's
+// Lua C-funcs expect this opaque "Lua ID" userdata form, NOT a bare
+// lua_Integer. Vanilla pattern: menu_diplomacy.lua:1648, menu_interactmenu.lua.
+//
+// CAVEAT: not every MD-script-accessible field is reachable through
+// GetComponentData. `buildresourcevalue` for example is exposed ONLY in MD
+// namespace (`component.{X}.buildresourcevalue`); GetComponentData returns
+// nil for it on valid live stations. Stick to fields that have at least one
+// vanilla Lua caller before adding an SDK domain helper for them.
+static bool prepare_call(int top, const char* getter_fn,
+                         const X4nLuaKey& key, const char* field) {
+    if (key.type == X4N_KEY_UINT64) {
+        x4n::lua::getfield(g_lua, LUA_GLOBALSINDEX, "ConvertStringToLuaID");
+        if (x4n::lua::type(g_lua, -1) != LUA_TFUNCTION) {
+            x4n::lua::settop(g_lua, top);
+            return false;
+        }
+        char id_str[24];
+        snprintf(id_str, sizeof(id_str), "%llu",
+                 (unsigned long long)key.v.u);
+        x4n::lua::pushstring(g_lua, id_str);
+        if (x4n::lua::pcall(g_lua, 1, 1, 0) != 0) {
+            x4n::lua::settop(g_lua, top);
+            return false;
+        }
+        // Stack now has the converted Lua ID userdata on top.
+    }
+
+    x4n::lua::getfield(g_lua, LUA_GLOBALSINDEX, getter_fn);
+    if (x4n::lua::type(g_lua, -1) != LUA_TFUNCTION) {
+        x4n::lua::settop(g_lua, top);
+        return false;
+    }
+
+    if (key.type == X4N_KEY_UINT64) {
+        // Stack: [..., converted_id, getter_fn]. Insert getter_fn below
+        // converted_id so the call shape is getter_fn(converted_id, field).
+        x4n::lua::insert(g_lua, -2);
+    } else {
+        x4n::lua::pushstring(g_lua, key.v.s ? key.v.s : "");
+    }
+    x4n::lua::pushstring(g_lua, field);
+    return true;
+}
+
+static bool proxy_get_lua_property(const char* getter_fn, X4nLuaKey key,
+                                   const char* field, X4nLuaValueType vt,
+                                   void* out) {
+    if (!g_lua || !getter_fn || !field || !out) return false;
+    int top = x4n::lua::gettop(g_lua);
+    if (!prepare_call(top, getter_fn, key, field)) return false;
+
+    bool ok = false;
+    if (x4n::lua::pcall(g_lua, 2, 1, 0) == 0) {
+        int t = x4n::lua::type(g_lua, -1);
+        switch (vt) {
+            case X4N_VAL_INT64:
+                if (t == LUA_TNUMBER) {
+                    *static_cast<int64_t*>(out) =
+                        static_cast<int64_t>(x4n::lua::tointeger(g_lua, -1));
+                    ok = true;
+                }
+                break;
+            case X4N_VAL_DOUBLE:
+                if (t == LUA_TNUMBER) {
+                    *static_cast<double*>(out) =
+                        static_cast<double>(x4n::lua::tonumber(g_lua, -1));
+                    ok = true;
+                }
+                break;
+            case X4N_VAL_BOOL:
+                // Strict: 1/0 numeric flags must be fetched as INT64.
+                if (t == LUA_TBOOLEAN) {
+                    *static_cast<bool*>(out) =
+                        x4n::lua::toboolean(g_lua, -1) != 0;
+                    ok = true;
+                }
+                break;
+        }
+    }
+    x4n::lua::settop(g_lua, top);
+    return ok;
+}
+
+static bool proxy_get_lua_property_str(const char* getter_fn, X4nLuaKey key,
+                                       const char* field, char* out_buf,
+                                       size_t buf_size) {
+    if (!g_lua || !getter_fn || !field || !out_buf || buf_size == 0)
+        return false;
+    int top = x4n::lua::gettop(g_lua);
+    if (!prepare_call(top, getter_fn, key, field)) return false;
+
+    bool ok = false;
+    if (x4n::lua::pcall(g_lua, 2, 1, 0) == 0) {
+        if (x4n::lua::type(g_lua, -1) == LUA_TSTRING) {
+            size_t len = 0;
+            const char* s = x4n::lua::tolstring(g_lua, -1, &len);
+            // Truncation is failure — caller can't otherwise tell whether
+            // the returned value is the full string. Retry with larger buf.
+            if (s && len + 1 <= buf_size) {
+                std::memcpy(out_buf, s, len);
+                out_buf[len] = '\0';
+                ok = true;
+            }
+        }
+    }
+    x4n::lua::settop(g_lua, top);
+    return ok;
 }
 
 // ---------------------------------------------------------------------------

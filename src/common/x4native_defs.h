@@ -81,6 +81,16 @@ typedef int (*raise_lua_event_fn)(const char* name, const char* param);
 // Callback the proxy provides so the core can register Lua→C++ bridges.
 typedef int (*register_lua_bridge_fn)(const char* lua_event, const char* cpp_event);
 
+// Callbacks the proxy provides so extensions can read engine values exposed
+// only as Lua properties (Get*Data-style host C-funcs). Generic across all
+// future accessors — signature matches X4NativeAPI.get_lua_property[_str].
+typedef bool (*get_lua_property_fn)(const char* getter_fn, X4nLuaKey key,
+                                    const char* field, X4nLuaValueType vt,
+                                    void* out);
+typedef bool (*get_lua_property_str_fn)(const char* getter_fn, X4nLuaKey key,
+                                        const char* field,
+                                        char* out_buf, size_t buf_size);
+
 // Stash (proxy-owned in-memory key-value, survives /reloadui and hot-reload)
 // Namespace isolates keys per extension; extensions may read other namespaces.
 typedef int         (*stash_set_fn)(const char* ns, const char* key, const void* data, uint32_t size);
@@ -101,6 +111,11 @@ struct CoreInitContext {
     stash_get_fn    stash_get;
     stash_remove_fn stash_remove;
     stash_clear_fn  stash_clear;
+
+    // Lua-property accessors (proxy-implemented, generic over all Get*Data-
+    // style host C-funcs). Core forwards them through to extensions verbatim.
+    get_lua_property_fn     get_lua_property;
+    get_lua_property_str_fn get_lua_property_str;
 };
 
 // Core DLL exported function signatures

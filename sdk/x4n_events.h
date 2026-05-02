@@ -10,7 +10,8 @@
 //   x4n::off(id);
 //   x4n::raise("my_event", data_ptr);
 //   x4n::raise_lua("lua_event_name", "param");
-//   x4n::bridge_lua_event("luaEvent", "cppEvent");
+//   x4n::bridge_lua_event("event_name");                  // C++ name = Lua name
+//   x4n::bridge_lua_event("luaEvent", "cppEvent");        // different names
 // ---------------------------------------------------------------------------
 #pragma once
 
@@ -77,10 +78,14 @@ inline int raise_lua(const char* name, const char* param = nullptr) {
 }
 
 /// Register a dynamic Lua->C++ event bridge.
-/// When the Lua event fires, the framework will raise the C++ event.
+/// When the Lua event fires, the framework raises the C++ event.
+/// `cpp_event` defaults to `lua_event` — pass it explicitly only when the
+/// C++ subscriber name differs from the Lua side (rare).
 /// Returns 0 on success. Must be called from UI thread (during init is fine).
-inline int bridge_lua_event(const char* lua_event, const char* cpp_event) {
-    return detail::g_api->register_lua_bridge(lua_event, cpp_event);
+inline int bridge_lua_event(const char* lua_event,
+                            const char* cpp_event = nullptr) {
+    return detail::g_api->register_lua_bridge(
+        lua_event, cpp_event ? cpp_event : lua_event);
 }
 
 } // namespace x4n

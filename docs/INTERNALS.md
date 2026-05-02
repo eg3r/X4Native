@@ -5,6 +5,13 @@
 The event system is a **general-purpose bidirectional event bus**. Any event name can flow in any direction — Lua→C++, C++→Lua, or C++→C++. The bus is implemented as a pub/sub system in the core DLL (`EventSystem`), with two bridges in the proxy that connect it to X4's Lua/MD layer.
 
 ```mermaid
+---
+config:
+    layout: 'elk'
+    theme: 'neutral'
+    themeVariables:
+        lineColor: '#ff9100'
+---
 graph LR
     subgraph "MD / Lua"
         RLE["raise_lua_event"]
@@ -56,7 +63,7 @@ api->raise_lua_event("mymod.alert", "data")
 
 ### Lua→C++ Bridge
 
-Table-driven forwarding in `x4native.lua`. Extensions can dynamically register bridges at init time via `x4n::bridge_lua_event(lua_event, cpp_event)`.
+Table-driven forwarding in `x4native.lua`. Extensions can dynamically register bridges at init time via `x4n::bridge_lua_event(lua_event)` — the C++ event name defaults to the Lua event name. Pass an explicit second arg only when the two should differ.
 
 ### Event Naming Conventions
 
@@ -77,6 +84,13 @@ In addition to the string-named event bus, X4Native hooks the game's internal MD
 #### Architecture
 
 ```mermaid
+---
+config:
+    layout: 'elk'
+    theme: 'neutral'
+    themeVariables:
+        lineColor: '#ff9100'
+---
 graph TB
     subgraph "Game Engine"
         GE["Game logic raises event"]
@@ -224,6 +238,13 @@ X4's `content.xml` has a fixed schema enforced by the game engine. Adding unknow
 ### Discovery Flow
 
 ```mermaid
+---
+config:
+    layout: 'elk'
+    theme: 'neutral'
+    themeVariables:
+        lineColor: '#ff9100'
+---
 graph TB
     SCAN["Scan extensions/ folder"] --> CHECK["x4native.json exists?"]
     CHECK -->|Yes| PARSE["Parse config"]

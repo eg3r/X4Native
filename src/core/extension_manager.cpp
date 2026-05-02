@@ -13,6 +13,11 @@
 // Runtime-resolved offsets populated by core.cpp::populate_offsets()
 extern X4GameOffsets s_offsets;
 
+// Proxy-implemented Lua-property accessors, captured by core.cpp::core_init
+// and forwarded into each extension's API struct.
+extern get_lua_property_fn     g_get_lua_property;
+extern get_lua_property_str_fn g_get_lua_property_str;
+
 #include <nlohmann/json.hpp>
 #include <filesystem>
 #include <fstream>
@@ -793,6 +798,8 @@ void ExtensionManager::fill_api(X4NativeAPI& api, ExtensionInfo& ext) {
     api.stash_get            = s_stash_get;
     api.stash_remove         = s_stash_remove;
     api.stash_clear          = s_stash_clear;
+    api.get_lua_property          = g_get_lua_property;
+    api.get_lua_property_str      = g_get_lua_property_str;
     api._ext_id               = ext.extension_id.c_str();
     api._ext_display_name     = ext.display_name.c_str();
     api._ext_priority         = static_cast<intptr_t>(ext.priority);

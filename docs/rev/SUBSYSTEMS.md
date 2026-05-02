@@ -1560,7 +1560,64 @@ Connection names (e.g., "connection_room01") are stored in `ConnectionEntry` str
 
 ---
 
-## 12. Related Documents
+## 12. MD Property Dispatch — why MD-only properties cannot be FFI-exposed
+
+The engine implements MD-script `component.{X}.<property>` reads via **two distinct dispatchers**. This is critical because MD-only properties (e.g. `buildresourcevalue`) cannot be reached via Lua's `GetComponentData` and have no clean FFI entry.
+
+### Dispatcher 1 — Lua C-function `LuaGlobal_GetComponentData`
+
+- Address: `0x14023E190`
+- FNV-1 hash table over a SUBSET of property names: `name`, `owner`, `idcode`, `agenticon`, `sectorid`, `isshipyard`, `isfemale`, etc. — UI-focused fields.
+- Returns `nil` for properties not in the table. **This is what Lua callers see — including any `x4n::entity::get_field_int(uid, field)` SDK consumers.**
+
+### Dispatcher 2 — MD VM `sub_140CAEB60` (the dispatcher MD scripts use)
+
+- Address: `0x140CAEB60` (~128 KB function)
+- Per-property dispatch is **virtual** on the entity class — uses `vtable[+0x11C8]` (slot 569) and `vtable[+0x11D0]` (slot 570).
+- Each entity class (Object, Defensible, Ship, Station, Container, …) implements its own value-walking method. **There is no single FFI-able entry.**
+- Property-name → numeric id is resolved via 26 namespace-specific binary-search tables at `0x142255780+`. Entry layout: `{const char* name, uint64 id}` 16 bytes. Lookup function: `sub_1402D50E0(table_base, &name) → int prop_id`.
+
+### Practical rule
+
+If a property has zero vanilla `GetComponentData(...)` callers in `reference/game/ui/`, it is **MD-VM-only**. Use the **MD-bridge cache pattern**: cycle-burst MD cue → `raise_lua_event` → DLL cache. Do not attempt direct FFI exposure.
+
+### Why direct FFI to dispatcher 2 isn't viable
+
+Reaching `buildresourcevalue` (or any MD-VM-only property) via `sub_140CAEB60` directly would require:
+
+1. Allocate + populate a `PropertyIterator` (24 bytes minimum: `{entry_array_ptr, total_count, cursor_pos}` + internal state) using engine allocator `sub_141467360`.
+2. Allocate a single `{name_ptr=0x1429C7CC0, prop_id=0x79}` 16-byte entry as the iterator's array.
+3. Allocate output buffer (likely 16 bytes for `money` kind: `{tag, int64_value}`).
+4. Resolve `qword_146C8D2F8` (internal global handle).
+5. Call `sub_140CAEB60(entity, prop_iter, out_buf)`.
+6. Decode the tagged-variant output buffer.
+
+Offsets churn between builds, the engine-internal allocator/handle plumbing has SEH side effects, and there is no stable export. The MD-bridge cache reaches **the same code path** via one cue-fire per cache-burst — version-stable across the entire MD VM ABI, auto-respects DLC/mod overrides. Use the bridge.
+
+### Property-EXISTENCE checker (not a value reader)
+
+`sub_140AA4D10` (~8 KB, 123-case switch on prop_id `0x00..0x7A`) is the closest thing to a flat dispatch — but it's a `bool` existence checker for `<conditions>` predicates, not a value reader. Cases `0x16` (`value`), `0x79` (`buildresourcevalue`), `0x7A` (`repairprice`) all dispatch to `sub_140B0D940` → polymorphic ancestor walker `sub_14039B470` calling `vtable[+0x11D0](component, KIND=22)` until match. Output is the matched ancestor's vtable pointer used only for `!= 0` truthiness.
+
+### Key addresses
+
+| Address | Role |
+|---|---|
+| `0x14023E190` | `LuaGlobal_GetComponentData` (dispatcher 1) |
+| `0x140CAEB60` | MD VM property dispatcher (dispatcher 2, ~128 KB) — virtual via `vtable[+0x11D0]` |
+| `0x140CA13F0` / `0x140CD0C20` / `0x140CD38F0` | Wrappers around `sub_140CAEB60` |
+| `0x140CD0320` | `PropertyIterator::NextKey` |
+| `0x140CD0500` | `PropertyIterator::LookAhead` |
+| `0x142255780` | `component`-namespace property table |
+| `0x1402D50E0` | Binary-search property name → id resolver |
+| `0x140AA4D10` | Property-existence checker (bool, 123-case switch) |
+| `0x140B0D940` | Money-kind ancestor resolver wrapper |
+| `0x14039B470` | Polymorphic ancestor walker |
+
+Full RE write-up: `D:\Projects\X4Strategos\.claude\reports\2026-05-03_buildresourcevalue_re.md`.
+
+---
+
+## 13. Related Documents
 
 | Document | Contents |
 |----------|----------|

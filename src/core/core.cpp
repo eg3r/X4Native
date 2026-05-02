@@ -127,7 +127,6 @@ X4GameOffsets s_offsets = {
     .room_persistent = X4_ROOM_OFFSET_PERSISTENT,
 };
 
-static void*       g_lua       = nullptr;   // lua_State* (opaque here)
 static std::string g_ext_root;
 static std::string g_game_version;
 static std::string g_version_string;        // cached for get_version()
@@ -139,6 +138,12 @@ static stash_set_fn    g_stash_set    = nullptr;
 static stash_get_fn    g_stash_get    = nullptr;
 static stash_remove_fn g_stash_remove = nullptr;
 static stash_clear_fn  g_stash_clear  = nullptr;
+
+// Lua-property accessors — proxy-implemented (proxy already has the resolved
+// Lua C-API table for proxy_raise_lua_event), forwarded into X4NativeAPI.
+// Externally linked so extension_manager.cpp::fill_api can install them.
+get_lua_property_fn     g_get_lua_property     = nullptr;
+get_lua_property_str_fn g_get_lua_property_str = nullptr;
 
 // ---------------------------------------------------------------------------
 // Resolve pointer fields in s_offsets (requires exe_base, called once at startup)
@@ -407,8 +412,10 @@ static const char* impl_get_loaded_extensions() {
     return x4n::ExtensionManager::loaded_extensions_json();
 }
 
-static void impl_set_lua_state(void* L) {
-    g_lua = L;
+static void impl_set_lua_state(void* /*L*/) {
+    // Proxy owns the lua_State and the resolved Lua C-API table; core has
+    // no mirror to update. This dispatch slot remains so the proxy can
+    // notify subsystems if needed in the future.
     x4n::Logger::info("Lua state updated (UI reload)");
 }
 
@@ -457,8 +464,9 @@ static void impl_set_extension_setting(const char* ext_id, const char* key,
 
 extern "C" __declspec(dllexport)
 int core_init(CoreInitContext* ctx) {
-    g_lua      = ctx->lua_state;
-    g_ext_root = ctx->ext_root;
+    g_ext_root             = ctx->ext_root;
+    g_get_lua_property     = ctx->get_lua_property;
+    g_get_lua_property_str = ctx->get_lua_property_str;
 
     // 1. Logger — two-phase init. Start buffering in memory; the file is
     //    opened in step 5 once we have GameAPI (needed to resolve the

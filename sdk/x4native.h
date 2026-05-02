@@ -32,6 +32,7 @@
 //   #include <x4n_module.h>         // x4n::module::Module (production/processing module wrapper)
 //   #include <x4n_station.h>        // x4n::station::Station (station wrapper, uses x4n_module.h)
 //   #include <x4n_ship.h>           // x4n::ship::Ship (typed handle + order creation)
+//   #include <x4n_ware.h>           // x4n::ware::avg_price/min_price/max_price (Lua-wrapped)
 //   #include <x4n_container.h>      // x4n::container::Container (station/ship base, price factor)
 //   #include <x4n_buildprocessor.h> // x4n::buildprocessor::Buildprocessor (construction progress)
 //
@@ -83,4 +84,5 @@
 #include "x4n_ship.h"
 #include "x4n_container.h"
 #include "x4n_buildprocessor.h"
+#include "x4n_ware.h"
 

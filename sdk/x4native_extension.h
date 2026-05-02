@@ -28,6 +28,7 @@
 extern "C" {
 #endif
 
+#include <stddef.h>
 #include <stdint.h>
 
 // ---- Version & constants -------------------------------------------------
@@ -88,6 +89,29 @@ typedef struct X4HookContext {
 
 // Raw hook callback signature. Returns 0 on success.
 typedef int (*X4HookCallback)(X4HookContext* ctx);
+
+// ---- Lua-property accessor types -----------------------------------------
+// Discriminator + tagged-union for `Get*Data(key, field)`-style host Lua
+// C-funcs. Used by api->get_lua_property / get_lua_property_str.
+
+typedef enum {
+    X4N_KEY_STRING,   // ware ids, faction ids, …
+    X4N_KEY_UINT64,   // UniverseID-keyed lookups
+} X4nLuaKeyType;
+
+typedef struct {
+    X4nLuaKeyType type;
+    union {
+        const char* s;
+        uint64_t    u;
+    } v;
+} X4nLuaKey;
+
+typedef enum {
+    X4N_VAL_INT64,    // out: int64_t*
+    X4N_VAL_DOUBLE,   // out: double*
+    X4N_VAL_BOOL,     // out: bool*
+} X4nLuaValueType;
 
 // ---- Forward declaration for game function table -------------------------
 // Include x4_game_func_table.h for the full struct definition.
@@ -247,12 +271,34 @@ typedef struct X4NativeAPI {
     void        (*set_setting_string)(const char* key, const char* value,
                                       void* _api_ptr);
 
+    // --- Lua-property accessors (UI thread only). SDK wrappers in
+    //     x4n_ware.h / x4n_entity.h / x4n_<domain>.h. Out untouched on
+    //     failure. Strict type check — value-type mismatch returns false. ---
+
+    // Numeric / bool by-value primitive. `out` typed by `vt`:
+    //   X4N_VAL_INT64  → int64_t*    X4N_VAL_DOUBLE → double*
+    //   X4N_VAL_BOOL   → bool*
+    bool (*get_lua_property)(const char* getter_fn,
+                             X4nLuaKey   key,
+                             const char* field,
+                             X4nLuaValueType vt,
+                             void* out);
+
+    // String primitive — copies into `out_buf`, nul-terminates on success.
+    // Returns false if the field is missing, non-string, or too long for
+    // the buffer (truncation is treated as failure so callers detect it).
+    bool (*get_lua_property_str)(const char* getter_fn,
+                                 X4nLuaKey   key,
+                                 const char* field,
+                                 char*       out_buf,
+                                 size_t      buf_size);
+
     // Trailing ABI pad. New function pointers are added by decrementing this
     // count — extensions compiled against an older header still see a valid
     // struct layout for every field they know about. Grow this array (never
     // shrink it) when the runway gets low; shrinking would silently break
     // already-compiled extensions.
-    void* _reserved[16];
+    void* _reserved[14];
 } X4NativeAPI;
 
 // ---- Required exports from extension DLLs --------------------------------

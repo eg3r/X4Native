@@ -175,8 +175,12 @@ x4n::raise_lua("my_lua_event_name", "optional_param");
 Forward game Lua events into C++ without writing any Lua:
 
 ```cpp
-// Register bridge (call during on_game_loaded or on_game_started)
+// Register bridge (call during on_game_loaded or on_game_started).
+// Pass two args when the C++ event name should differ from the Lua side:
 x4n::bridge_lua_event("playerUndocked", "on_player_undocked");
+
+// Or one arg when the names match (the common case in custom extensions):
+x4n::bridge_lua_event("mymod_thing_happened");
 
 // Subscribe — string param from Lua is forwarded automatically
 x4n::on("on_player_undocked", [](const char* param) {

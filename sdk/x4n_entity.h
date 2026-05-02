@@ -20,6 +20,7 @@
 
 #include "x4n_core.h"
 #include <cstdint>
+#include <optional>
 #include <string>
 
 namespace x4n { namespace entity {
@@ -169,6 +170,58 @@ inline UniverseID find_ancestor(UniverseID id, GameClass cls) {
     if (!g || !g->GetContextByClass) return 0;
     const char* name = class_name(cls);
     return name ? g->GetContextByClass(id, name, false) : 0;
+}
+
+// Engine-derived numeric properties via host Lua C-func GetComponentData.
+// Returns nullopt for unknown/dead entities or unresolved Lua. Non-integer
+// Lua numbers are truncated toward zero (lua_tointeger semantics).
+//
+// IMPORTANT: GetComponentData exposes a SUBSET of MD-script properties — UI-
+// related fields (name, owner, isfemale, isshipyard, idcode, …) work; many
+// economy/build fields (notably `buildresourcevalue`) are MD-namespace only
+// and return nil through this path. Verify a field has at least one vanilla
+// Lua caller (`grep "GetComponentData.*\"<field>\"" reference/game/ui`) before
+// adding a typed SDK helper for it. For MD-only fields, route through MD
+// using a `raise_lua_event` round-trip and cache the result.
+//
+// Why MD-only properties can't be reached without the MD bridge — the engine
+// has two distinct property dispatchers:
+//
+// 1. Lua C-function dispatcher (`LuaGlobal_GetComponentData`) — FNV-1 hash
+//    table over a SUBSET of property names. Many properties (e.g.
+//    `buildresourcevalue`) are NOT in this table; `GetComponentData` returns
+//    nil for them. This is the dispatcher `get_field_int` calls below.
+//
+// 2. MD VM dispatcher — uses VIRTUAL dispatch via vtable[+0x11C8 / +0x11D0]
+//    (slots 569 / 570). Each entity class implements its own value-walker;
+//    there is no single FFI-able entry. Direct call would require building
+//    internal PropertyIterator structs + tagged-variant decoding, and is
+//    version-fragile across patches.
+//
+// Practical rule: if a property has zero vanilla `GetComponentData(...)`
+// callers in `reference/game/ui/`, it is MD-VM-only. Route it through MD
+// (cycle-burst MD cue → raise_lua_event → DLL cache); do NOT attempt direct
+// FFI exposure. See `X4Native/docs/rev/SUBSYSTEMS.md` §12 for the full
+// dual-dispatcher analysis.
+
+namespace detail_entity {
+    inline X4nLuaKey key(UniverseID id) {
+        X4nLuaKey k{};
+        k.type = X4N_KEY_UINT64;
+        k.v.u  = id;
+        return k;
+    }
+}
+
+/// Any numeric `GetComponentData` field by name. Truncates non-integer values.
+/// @thread UI only (Lua state not thread-safe).
+inline std::optional<int64_t> get_field_int(UniverseID id, const char* field) {
+    if (!detail::g_api->get_lua_property) return std::nullopt;
+    int64_t v = 0;
+    if (!detail::g_api->get_lua_property("GetComponentData", detail_entity::key(id),
+                                         field, X4N_VAL_INT64, &v))
+        return std::nullopt;
+    return v;
 }
 
 }} // namespace x4n::entity
