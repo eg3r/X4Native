@@ -10,7 +10,8 @@
         "900-604402",
         "900-605025",
         "900-606138",
-        "900-607242"
+        "900-607242",
+        "900-607977"
     ],
     "functions": {
         "AbortActiveDiplomacyActionOperation": {
@@ -6186,6 +6187,21 @@
         },
         "SetMapRenderResourceProbeRange": {
             "added": "900-605025"
+        },
+        "GetFleetUnitLoadout": {
+            "added": "900-607977"
+        },
+        "GetFleetUnitLoadoutCounts": {
+            "added": "900-607977"
+        },
+        "GetNumPlayerEquipmentWares": {
+            "added": "900-607977"
+        },
+        "GetPlayerEquipmentWares": {
+            "added": "900-607977"
+        },
+        "SetFleetUnitLoadout": {
+            "added": "900-607977"
         }
     }
 }

@@ -16,7 +16,8 @@
         "byte_sig_note": "First 32 bytes of prologue: mov rax,rsp + save r9/r8/rdx/rcx to home area + push rbp/rbx/rsi/rdi/r12-r15."
       },
       "900-606138": { "rva": "0x00415D70" },
-      "900-607242": { "rva": "0x00416320" }
+      "900-607242": { "rva": "0x00416320" },
+      "900-607977": { "rva": "0x00417890" }
     },
     "MacroRegistry_Lookup": {
       "_find_hints": {
@@ -31,7 +32,8 @@
         "byte_sig_note": "Large function (~0x580 bytes) with FNV-1a hash loop. Prologue varies by version."
       },
       "900-606138": { "rva": "0x009EBF10" },
-      "900-607242": { "rva": "0x009EF7B0" }
+      "900-607242": { "rva": "0x009EF7B0" },
+      "900-607977": { "rva": "0x009F1B60" }
     },
     "MD_CreateDynamicInterior_Handler": {
       "_find_hints": {
@@ -45,7 +47,8 @@
         "byte_sig_note": "MD action handler class. Size ~0xB49. Prologue may vary."
       },
       "900-606138": { "rva": "0x00B64E50" },
-      "900-607242": { "rva": "0x00B687C0" }
+      "900-607242": { "rva": "0x00B687C0" },
+      "900-607977": { "rva": "0x00B6AF20" }
     },
     "Component_GetCombinedSeed": {
       "_find_hints": {
@@ -60,7 +63,8 @@
         "byte_sig_note": "Complete 2-instruction function: mov rax,[rcx+3C0h]; ret. Offset 0x3C0 = combined seed field."
       },
       "900-606138": { "rva": "0x003163C0" },
-      "900-607242": { "rva": "0x003160D0" }
+      "900-607242": { "rva": "0x003160D0" },
+      "900-607977": { "rva": "0x00317450" }
     },
     "ComponentRegistry_Find": {
       "_find_hints": {
@@ -75,7 +79,8 @@
         "byte_sig_note": "First 16 bytes. Bytes 15-18 are a conditional jump offset that may vary."
       },
       "900-606138": { "rva": "0x000CE890" },
-      "900-607242": { "rva": "0x000CE910" }
+      "900-607242": { "rva": "0x000CE910" },
+      "900-607977": { "rva": "0x000CECA0" }
     },
     "PlanEntry_Construct": {
       "_find_hints": {
@@ -91,7 +96,8 @@
         "byte_sig_note": "First 16 bytes: save rbx+rcx to home area, push rdi, sub rsp 20h."
       },
       "900-606138": { "rva": "0x00D0F770" },
-      "900-607242": { "rva": "0x00D13F90" }
+      "900-607242": { "rva": "0x00D13F90" },
+      "900-607977": { "rva": "0x00D16D70" }
     },
     "GameAlloc": {
       "_find_hints": {
@@ -107,7 +113,8 @@
         "byte_sig_note": "First 16 bytes: save rbx+rsi, push rdi, sub rsp 130h."
       },
       "900-606138": { "rva": "0x01462250" },
-      "900-607242": { "rva": "0x01467360" }
+      "900-607242": { "rva": "0x01467360" },
+      "900-607977": { "rva": "0x0146C1D0" }
     },
     "ConstructionDB_CreatePlanDirect": {
       "_find_hints": {
@@ -123,7 +130,8 @@
         "byte_sig_note": "First 16 bytes: standard register save (rbx, rbp, rsi to home area). Small function (~0xB4)."
       },
       "900-606138": { "rva": "0x00D14160" },
-      "900-607242": { "rva": "0x00D18980" }
+      "900-607242": { "rva": "0x00D18980" },
+      "900-607977": { "rva": "0x00D1B760" }
     },
     "ConstructionDB_AddPlan": {
       "_find_hints": {
@@ -139,7 +147,8 @@
         "byte_sig_note": "First 16 bytes: save r8 to home area, push rbx, sub rsp 40h, mov rbx=rcx, test r8."
       },
       "900-606138": { "rva": "0x00D13FC0" },
-      "900-607242": { "rva": "0x00D187E0" }
+      "900-607242": { "rva": "0x00D187E0" },
+      "900-607977": { "rva": "0x00D1B5C0" }
     },
     "RadarVisibilityChanged_BuildEvent": {
       "_find_hints": {
@@ -156,7 +165,8 @@
         "byte_sig_note": "First 25 bytes: mov [rsp+8],rbx; push rdi; sub rsp,30h; mov rdi,rcx; mov [rsp+20h],10h; mov ecx,28h. Verified against binary."
       },
       "900-606138": { "rva": "0x00A328A0" },
-      "900-607242": { "rva": "0x00A35E60" }
+      "900-607242": { "rva": "0x00A35E60" },
+      "900-607977": { "rva": "0x00A38180" }
     },
     "IsRadarVisible_ReadByte": {
       "_find_hints": {
@@ -172,7 +182,8 @@
         "byte_sig_note": "Complete function. 8 bytes: movzx eax,byte ptr [rcx+400h]; ret."
       },
       "900-606138": { "rva": "0x0011CD70" },
-      "900-607242": { "rva": "0x0011CFE0" }
+      "900-607242": { "rva": "0x0011CFE0" },
+      "900-607977": { "rva": "0x0011D300" }
     },
     "SetObjectRadarVisible_Action": {
       "_find_hints": {
@@ -188,7 +199,8 @@
         "byte_sig_note": "First 21 bytes: REX push rbx; push rsi; push rdi; sub rsp,50h; mov rsi,rcx; lea rdx,[rsp+70h]; add rcx,28h; mov reg,r8. Verified against binary."
       },
       "900-606138": { "rva": "0x00B92620" },
-      "900-607242": { "rva": "0x00B96270" }
+      "900-607242": { "rva": "0x00B96270" },
+      "900-607977": { "rva": "0x00B98A20" }
     },
     "X4_FrameTick": {
       "_find_hints": {
@@ -204,7 +216,8 @@
         "byte_sig_note": "First 16 bytes: mov [rsp+10h],rbx + push rbp/rsi/rdi/r12-r15."
       },
       "900-606138": { "rva": "0x00F53F80" },
-      "900-607242": { "rva": "0x00F58520" }
+      "900-607242": { "rva": "0x00F58520" },
+      "900-607977": { "rva": "0x00F5D0C0" }
     },
     "CreateOrderInternal": {
       "_find_hints": {
@@ -221,7 +234,8 @@
         "byte_sig_note": "First 32 bytes: mov [rsp+8],rbx; mov [rsp+18h],rbp; mov [rsp+20h],rsi; push rdi; push r12; push r13; push r14; push r15; sub rsp,50h; movzx r13d,r9b."
       },
       "900-606138": { "rva": "0x004248C0" },
-      "900-607242": { "rva": "0x00424D00" }
+      "900-607242": { "rva": "0x00424D00" },
+      "900-607977": { "rva": "0x00426240" }
     },
     "SetOrderParamInternal": {
       "_find_hints": {
@@ -238,7 +252,8 @@
         "byte_sig_note": "First 32 bytes: mov [rsp+8],rbx; mov [rsp+10h],rbp; mov [rsp+18h],rsi; push rdi; push r14; push r15; sub rsp,60h; movaps [rsp+50h],xmm6; mov r14,r8."
       },
       "900-606138": { "rva": "0x010274A0" },
-      "900-607242": { "rva": "0x0102B7D0" }
+      "900-607242": { "rva": "0x0102B7D0" },
+      "900-607977": { "rva": "0x01030480" }
     },
     "SetCommander": {
       "_find_hints": {
@@ -254,7 +269,8 @@
         "byte_sig_note": "First 31 bytes: mov [rsp+8],rbx; mov [rsp+10h],rbp; mov [rsp+18h],rsi; push rdi; push r14; push r15; sub rsp,20h; mov rsi,rdx; mov rdi,r8; mov rdx,rcx (partial)."
       },
       "900-606138": { "rva": "0x001C6170" },
-      "900-607242": { "rva": "0x001C6460" }
+      "900-607242": { "rva": "0x001C6460" },
+      "900-607977": { "rva": "0x001C7190" }
     },
     "SetAssignment": {
       "_find_hints": {
@@ -269,7 +285,8 @@
         "byte_sig_note": "First 30 bytes: mov [rsp+8],rbx; mov [rsp+10h],rbp; mov [rsp+18h],rsi; mov [rsp+20h],rdi; push r14; sub rsp,60h; mov rbx,rdx; mov rdi,rcx."
       },
       "900-606138": { "rva": "0x001C5F40" },
-      "900-607242": { "rva": "0x001C6230" }
+      "900-607242": { "rva": "0x001C6230" },
+      "900-607977": { "rva": "0x001C6F60" }
     },
     "GetFactionBuildMethod": {
       "_find_hints": {
@@ -285,7 +302,8 @@
         "byte_sig_note": "First 15 bytes of prologue: sub rsp,28h; mov r9,rcx; test rcx,rcx; jne +18h; lea rcx,[rip+...]. Null-check guard on factionid param."
       },
       "900-606138": { "rva": "0x00194CC0" },
-      "900-607242": { "rva": "0x00194FB0" }
+      "900-607242": { "rva": "0x00194FB0" },
+      "900-607977": { "rva": "0x001953C0" }
     },
     "EventQueue_InsertOrDispatch": {
       "_find_hints": {
@@ -304,7 +322,8 @@
         "byte_sig_note": "Prologue (603990): test rdx,rdx; jz end; save rbx/rsi; movsd [rsp+18h],xmm2 (timestamp); push rdi; sub rsp,60h. Unique match. Old sig (603098) was generic 20-byte prologue with 146 matches — do not use."
       },
       "900-606138": { "rva": "0x00959360" },
-      "900-607242": { "rva": "0x0095CA80" }
+      "900-607242": { "rva": "0x0095CA80" },
+      "900-607977": { "rva": "0x0095E7C0" }
     },
     "FactionRelation_LookupReasonID": {
       "_find_hints": {
@@ -320,7 +339,8 @@
         "verify_strings": ["relationchangereason."]
       },
       "900-606138": { "rva": "0x002CBF00" },
-      "900-607242": { "rva": "0x002CBE10" }
+      "900-607242": { "rva": "0x002CBE10" },
+      "900-607977": { "rva": "0x002CD050" }
     },
     "FactionRelation_GetFloat": {
       "_find_hints": {
@@ -337,7 +357,8 @@
         "byte_sig_note": "Prologue (606138): mov r8,rdx; cmp rdx,rcx; jnz short; movss xmm0,Y. Distinctive — function-pair-equality fast path with movss xmm0,RIP-relative."
       },
       "900-606138": { "rva": "0x0030F700" },
-      "900-607242": { "rva": "0x0030F500" }
+      "900-607242": { "rva": "0x0030F500" },
+      "900-607977": { "rva": "0x00310800" }
     }
   }
 }

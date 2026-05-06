@@ -2087,3 +2087,11 @@ X4_FUNC(ProductionMethodInfo3, GetProductionMethodInfo2, (const char* wareid, co
 // ======== Game v9.00-605025 - Added (1 functions) ========
 
 X4_FUNC(void, SetMapRenderResourceProbeRange, (UniverseID holomapid, bool value))
+
+// ======== Game v9.00-607977 - Added (5 functions) ========
+
+X4_FUNC(void, GetFleetUnitLoadout, (UILoadout2* result, FleetUnitID fleetunitid))
+X4_FUNC(void, GetFleetUnitLoadoutCounts, (UILoadoutCounts2* result, FleetUnitID fleetunitid))
+X4_FUNC(uint32_t, GetNumPlayerEquipmentWares, (void))
+X4_FUNC(uint32_t, GetPlayerEquipmentWares, (EquipmentWareInfo* result, uint32_t resultlen))
+X4_FUNC(void, SetFleetUnitLoadout, (FleetUnitID fleetunitid, const char* macroname, UILoadout2 uiloadout))
