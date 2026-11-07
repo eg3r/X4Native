@@ -492,6 +492,89 @@
         "byte_sig_note": "First 36 bytes. Prologue: homes of rbx and r8, pushes of rbp, rsi, rdi and r12-r15, lea rbp,[rsp-N], sub rsp,M. Wildcarded: frame displacement, stack immediate. matches once in X4.exe v9.00 build 900-611726 (RVA 0x00B8F000)."
       },
       "900-611726": { "rva": "0x00B8F000" }
+    },
+    "BlacklistData_Export": {
+      "_find_hints": {
+        "method": "structural",
+        "steps": [
+          "1. Find the function that references 'BlacklistData::Import(): Duplicate definition of blacklist ID %d': that is the list reader; its caller is the universe load",
+          "2. The universe save, the load's counterpart, calls this function once with the list registry global in rcx and the save XML parent node in rdx",
+          "3. Verify: the prologue pushes rbp,rbx,rsi,rdi,r12-r15, then lea rsi,[rdx+0xC8] (the parent's children) and lea rdi,[rcx+0x10] (the registry tree)",
+          "4. Verify: inside its loop it calls the allocator with ecx=0xF8 and stores element id 0x67 in the new node"
+        ],
+        "verify_strings": [],
+        "byte_sig": "40 55 53 56 57 41 54 41 55 41 56 41 57 48 8D 6C 24 ?? 48 81 EC ?? ?? ?? ?? 48 8D B2 C8 00 00 00",
+        "byte_sig_note": "First 32 bytes. Prologue: pushes of rbp, rbx, rsi, rdi and r12-r15, lea rbp,[rsp-N], sub rsp,M, then lea rsi,[rdx+0xC8] (the parent's children). Wildcarded: frame displacement, stack immediate. matches once in X4.exe v9.00 build 900-611726 (RVA 0x003725E0)."
+      },
+      "900-611726": { "rva": "0x003725E0" }
+    },
+    "BlacklistData_Import": {
+      "_find_hints": {
+        "method": "unique_string",
+        "steps": [
+          "1. Search for the string 'BlacklistData::Import(): Duplicate definition of blacklist ID %d': its one reference is in this function",
+          "2. Verify: called once, from the universe load, with the list registry global in rcx",
+          "3. Verify: it stores 0x67 (the <blacklist> element id) as the child id it matches and calls the list filter build for each record it reads"
+        ],
+        "verify_strings": ["BlacklistData::Import(): Duplicate definition of blacklist ID %d"],
+        "byte_sig": "48 89 4C 24 08 55 53 56 57 41 54 41 55 41 56 41 57 48 8D 6C 24 ?? 48 81 EC ?? ?? ?? ?? 48 8B DA 48 8B F9 E8 ?? ?? ?? ??",
+        "byte_sig_note": "First 40 bytes. Prologue: home rcx, pushes, lea rbp,[rsp-N], sub rsp,M, rbx=lists, rdi=registry, then its first call. Wildcarded: frame displacement, rel32 call displacement, stack immediate. matches once in X4.exe v9.00 build 900-611726 (RVA 0x00371D20)."
+      },
+      "900-611726": { "rva": "0x00371D20" }
+    },
+    "LookupKeyName_FormatXMLName": {
+      "_find_hints": {
+        "method": "string_search",
+        "steps": [
+          "1. The string 'LookupKeyName::FormatXMLName(): The lookup ID %lld does not exist in '%s'' is referenced by one function per lookup namespace (74 in build 900-611726); each loads its own namespace from a global slot first",
+          "2. This one loads the SaveXML namespace (mov rdi,[rip+...] to the slot X4_RVA_SAVEXML_NAMESPACE), then movsxd rsi,[rcx] reads the id",
+          "3. Verify: a binary search over 24-byte entries at namespace+0xFB10 with the count at namespace+0x17880, comparing the int32 at entry+0x10"
+        ],
+        "verify_strings": ["LookupKeyName::FormatXMLName(): The lookup ID %lld does not exist in '%s'", "LookupKeyName::FormatXMLName(): Lookup does not exist"],
+        "byte_sig": "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC ?? 48 8B 3D ?? ?? ?? ?? 48 85 FF 0F 84 ?? ?? ?? ?? 48 8B 87 80 78 01 00",
+        "byte_sig_note": "First 38 bytes. Prologue, the load of the SaveXML namespace from its global slot, its null check and the load of the entry count at +0x17880. Wildcarded: RIP-relative displacement, branch displacement, stack immediate. matches once in X4.exe v9.00 build 900-611726 (RVA 0x00122550)."
+      },
+      "900-611726": { "rva": "0x00122550" }
+    },
+    "LookupKeyName_LookupName": {
+      "_find_hints": {
+        "method": "string_search",
+        "steps": [
+          "1. The string 'LookupKeyName::LookupName(): The key name \"%s\" is not recognized in lookup %s.%s%s' is referenced by one error logger; this function is one of its callers",
+          "2. Verify: the namespace pointer is loaded from the slot X4_RVA_SAVEXML_NAMESPACE, the same as the SaveXML FormatXMLName lookup's, and a null namespace returns 0",
+          "3. Verify: a short function: one call to the name lookup with rcx=namespace and rdx=name, and on a 0 result one call to the error logger with r8=the second argument"
+        ],
+        "verify_strings": ["LookupKeyName::LookupName(): The key name \"%s\" is not recognized in lookup %s.%s%s"],
+        "byte_sig": "48 89 5C 24 10 48 89 6C 24 18 56 48 83 EC ?? 48 8B 1D ?? ?? ?? ?? 48 8B EA 48 8B F1 48 85 DB 74 ??",
+        "byte_sig_note": "First 33 bytes. Prologue, the load of the SaveXML namespace from its global slot and its null check. Wildcarded: RIP-relative displacement, branch displacement, stack immediate. matches 74 places in X4.exe v9.00 build 900-611726, one of them RVA 0x00123690: every lookup namespace's instantiation shares these bytes, each loading its own namespace, so the find hints identify this one."
+      },
+      "900-611726": { "rva": "0x00123690" }
+    },
+    "XmlNode_SetAttribute": {
+      "_find_hints": {
+        "method": "structural",
+        "steps": [
+          "1. In the list save writer (BlacklistData_Export), find the call made with edx=0x527 and r8 pointing at the string '1'",
+          "2. Verify: the function computes strlen of r8, then walks 0x28-byte entries from [rcx+0x18] (or inline at rcx+0x18 when [rcx+0xB8]==4) comparing the dword at each with edx"
+        ],
+        "verify_strings": [],
+        "byte_sig": "48 83 EC ?? 4D 8B D0 4C 89 44 24 20 49 C7 C0 FF FF FF FF 49 FF C0 43 80 3C 02 00 75 ?? 4C 8D 49 18",
+        "byte_sig_note": "First 33 bytes. sub rsp, the strlen loop over the value, then lea r9,[rcx+0x18] (the attribute vector). Wildcarded: branch displacement, stack immediate. matches once in X4.exe v9.00 build 900-611726 (RVA 0x00123700)."
+      },
+      "900-611726": { "rva": "0x00123700" }
+    },
+    "XmlNodeVector_PushBack": {
+      "_find_hints": {
+        "method": "structural",
+        "steps": [
+          "1. In the list save writer (BlacklistData_Export), find the call made with rcx = a node + 0xC8 and rdx = the address of a local holding a new node",
+          "2. Verify: the function reads the count at [rcx+0x28] and the capacity at [rcx+0x20], stores [rdx] at the end, and uses the inline slots at rcx when the capacity is 4"
+        ],
+        "verify_strings": [],
+        "byte_sig": "48 89 5C 24 10 48 89 7C 24 18 4C 89 74 24 20 41 57 48 83 EC ?? 48 8B 59 28 4C 8D 71 28 48 B8 FF FF FF FF FF FF FF 1F",
+        "byte_sig_note": "First 39 bytes. Register homes, sub rsp, the load of the count at +0x28 and the maximum-size constant. Wildcarded: stack immediate. matches once in X4.exe v9.00 build 900-611726 (RVA 0x000CB8C0)."
+      },
+      "900-611726": { "rva": "0x000CB8C0" }
     }
   }
 }

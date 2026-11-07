@@ -35,6 +35,7 @@
 //   #include <x4n_ware.h>           // x4n::ware::avg_price/min_price/max_price (Lua-wrapped)
 //   #include <x4n_container.h>      // x4n::container::Container (station/ship base, price factor)
 //   #include <x4n_buildprocessor.h> // x4n::buildprocessor::Buildprocessor (construction progress)
+//   #include <x4n_savexml.h>        // x4n::savexml::register_tag (element/attribute names in saves)
 //
 // Minimal extension (events only):
 //
@@ -85,4 +86,5 @@
 #include "x4n_container.h"
 #include "x4n_buildprocessor.h"
 #include "x4n_ware.h"
+#include "x4n_savexml.h"
 

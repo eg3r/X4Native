@@ -656,6 +656,60 @@ typedef struct alignas(16) X4PlanEntry {
 #define X4_SCRIPT_COMMAND_FIND_SELL_OFFER  0x7B0    /* find_sell_offer — the searching controllable buys */
 #define X4_SCRIPT_COMMAND_FIND_BUY_OFFER   0x74E    /* find_buy_offer — the searching controllable sells */
 
+// ======== SAVE XML ========================================================
+// The SaveXML lookup namespace: the fixed table of element and attribute names a
+// save's XML nodes carry as numbers. Consumed by the core's save-name table
+// behind x4n_savexml.h. See docs/rev/SAVE_XML.md.
+// Verified against X4.exe v9.00 build 900-611726 —
+//   LookupKeyName_FormatXMLName (RVA 0x00122550) loads the namespace from the slot
+//   below, takes the count at +0x17880 and binary-searches the entries at +0xFB10
+//   by the int32 at entry+0x10, returning the name pointer at entry+0;
+//   LookupKeyName_LookupName (RVA 0x00123690) loads the same slot.
+#define X4_RVA_SAVEXML_NAMESPACE        0x06CF15D8  /* void** — pointer slot for the SaveXML namespace object */
+#define X4_SAVEXML_OFFSET_ENTRIES       0xFB10      /* the entries, inline, sorted by id */
+#define X4_SAVEXML_OFFSET_ENTRY_COUNT   0x17880     /* size_t — the number of entries */
+#define X4_SAVEXML_ENTRY_SIZE           0x18        /* bytes per entry */
+#define X4_SAVEXML_ENTRY_OFFSET_NAME    0x00        /* const char* — the name */
+#define X4_SAVEXML_ENTRY_OFFSET_ID      0x10        /* int32 — the number the name stands for */
+
+// A save XML node: one element of a save's in-memory DOM, built and read by the
+// game's writers and readers. See docs/rev/SAVE_XML.md.
+// Verified against X4.exe v9.00 build 900-611726 —
+//   BlacklistData_Export (RVA 0x003725E0) allocates each node with GameAlloc(0xF8,
+//   ..., 0x10) and constructs it inline: word [+0x02] = -1, dword [+0x04] = -1,
+//   qword [+0x08] = 0, qword [+0x10] = 0, qword [+0xB8] = 4, qword [+0xC0] = 0,
+//   qword [+0xE8] = 4, qword [+0xF0] = 0, byte [+0x00] = 3, then, when byte [+0x00]
+//   has no flag 8, dword [+0x0C] = the element number (the qword store at +0x08
+//   covers +0x08..+0x0F, so it clears the element too and has to come before it);
+//   it appends the node to the
+//   parent's child vector at +0xC8 through XmlNodeVector_PushBack;
+//   XmlNode_SetAttribute (RVA 0x00123700) finds or adds the attribute in the
+//   vector at +0x18, 0x28-byte entries with the number at +0 and the value at +8.
+// A small vector holds 4 entries inline at its start; past that, its start holds
+// a pointer to the entries on the heap and its capacity is no longer 4.
+#define X4_XML_NODE_SIZE                0xF8        /* bytes per node */
+#define X4_XML_NODE_ALIGNMENT           0x10        /* GameAlloc alignment for a node */
+#define X4_XML_NODE_OFFSET_FLAGS        0x00        /* uint8 — X4_XML_NODE_FLAG_* */
+#define X4_XML_NODE_OFFSET_SOURCE_LINE  0x02        /* uint16 — X4_XML_NODE_NO_SOURCE_LINE on a built node */
+#define X4_XML_NODE_OFFSET_SOURCE_COLUMN 0x04       /* int32 — X4_XML_NODE_NO_SOURCE_COLUMN on a built node */
+#define X4_XML_NODE_OFFSET_PREFIX       0x08        /* uint32 — 0 on a built node; the element follows at +0x0C */
+#define X4_XML_NODE_OFFSET_ELEMENT      0x0C        /* int32 — the element's SaveXML number */
+#define X4_XML_NODE_OFFSET_TEXT         0x10        /* a text node's content; 0 on a built element node */
+#define X4_XML_NODE_OFFSET_ATTRIBUTES   0x18        /* small vector of X4_XML_ATTRIBUTE_SIZE-byte attributes */
+#define X4_XML_NODE_OFFSET_ATTRIBUTE_CAPACITY 0xB8  /* size_t — the attribute vector's capacity */
+#define X4_XML_NODE_OFFSET_ATTRIBUTE_COUNT    0xC0  /* size_t — the attribute vector's count */
+#define X4_XML_NODE_OFFSET_CHILDREN     0xC8        /* small vector of child node pointers */
+#define X4_XML_NODE_OFFSET_CHILD_CAPACITY     0xE8  /* size_t — the child vector's capacity */
+#define X4_XML_NODE_OFFSET_CHILD_COUNT        0xF0  /* size_t — the child vector's count */
+#define X4_XML_NODE_FLAG_ELEMENT        0x03        /* flags of an element node */
+#define X4_XML_NODE_FLAG_TEXT           0x08        /* flag bit of a text node */
+#define X4_XML_NODE_NO_SOURCE_LINE      0xFFFF      /* source line of a built node */
+#define X4_XML_NODE_NO_SOURCE_COLUMN    (-1)        /* source column of a built node */
+#define X4_XML_NODE_INLINE_CAPACITY     4           /* a small vector's capacity while its entries are inline */
+#define X4_XML_ATTRIBUTE_SIZE           0x28        /* bytes per attribute */
+#define X4_XML_ATTRIBUTE_OFFSET_ID      0x00        /* int32 — the attribute's SaveXML number */
+#define X4_XML_ATTRIBUTE_OFFSET_VALUE   0x08        /* std::string — the attribute's value */
+
 // ======== SECTOR RESOURCE AREAS ===========================================
 // ResourceArea children of a Sector, used for unfiltered resource yield access.
 // GetDiscoveredSectorResources (FFI) has a player discovery filter at RA+0x1D0.

@@ -136,6 +136,25 @@ typedef struct X4GameOffsets {
     uint32_t  trade_buyer;                 // X4_TRADE_OFFSET_BUYER
     uint32_t  controllable_order_default;  // X4_CONTROLLABLE_OFFSET_ORDER_DEFAULT
     uint32_t  script_action_command_id;    // X4_SCRIPT_ACTION_OFFSET_COMMAND_ID
+
+    // === Save XML ===
+    void*     savexml_namespace;           // X4_RVA_SAVEXML_NAMESPACE (pointer slot: deref for the namespace)
+    uint32_t  xml_node_size;               // X4_XML_NODE_SIZE
+    uint32_t  xml_node_element;            // X4_XML_NODE_OFFSET_ELEMENT
+    uint32_t  xml_node_attributes;         // X4_XML_NODE_OFFSET_ATTRIBUTES
+    uint32_t  xml_node_children;           // X4_XML_NODE_OFFSET_CHILDREN
+    uint32_t  xml_node_flags;              // X4_XML_NODE_OFFSET_FLAGS
+    uint32_t  xml_node_source_line;        // X4_XML_NODE_OFFSET_SOURCE_LINE
+    uint32_t  xml_node_source_column;      // X4_XML_NODE_OFFSET_SOURCE_COLUMN
+    uint32_t  xml_node_prefix;             // X4_XML_NODE_OFFSET_PREFIX
+    uint32_t  xml_node_text;               // X4_XML_NODE_OFFSET_TEXT
+    uint32_t  xml_node_attribute_capacity; // X4_XML_NODE_OFFSET_ATTRIBUTE_CAPACITY
+    uint32_t  xml_node_attribute_count;    // X4_XML_NODE_OFFSET_ATTRIBUTE_COUNT
+    uint32_t  xml_node_child_capacity;     // X4_XML_NODE_OFFSET_CHILD_CAPACITY
+    uint32_t  xml_node_child_count;        // X4_XML_NODE_OFFSET_CHILD_COUNT
+    uint32_t  xml_attribute_size;          // X4_XML_ATTRIBUTE_SIZE
+    uint32_t  xml_attribute_id;            // X4_XML_ATTRIBUTE_OFFSET_ID
+    uint32_t  xml_attribute_value;         // X4_XML_ATTRIBUTE_OFFSET_VALUE
 } X4GameOffsets;
 
 #ifdef __cplusplus

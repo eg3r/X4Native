@@ -281,3 +281,50 @@ X4_FUNC(void*, AutoIDMap_Lookup, (void* table, uint64_t handle, int mask))
 // Verified: v9.00 build 900-611726, RVA 0x00B8F000. Per-build RVA from version_db.
 X4_FUNC(void*, FindOfferAction, (void* action, void* arg2, void* arg3, void* arg4))
 
+// BlacklistData_Export — writes the list registry into the save. registry = the list
+// registry (X4_RVA_BLACKLIST_REGISTRY, dereferenced); parent = the save XML node the
+// lists are written under. For each record it allocates a 0xF8-byte node, sets its
+// element id to 0x67 (<blacklist>), fills its attributes and children from the record,
+// and appends it to parent's children (+0xC8). Called once, by the universe save.
+// Declared returning void* for the same reason as BlacklistFilterBuild.
+// Verified: v9.00 build 900-611726, RVA 0x003725E0. Per-build RVA from version_db.
+X4_FUNC(void*, BlacklistData_Export, (void* registry, void* parent))
+
+// BlacklistData_Import — reads the list registry back from a save. registry = the list
+// registry; lists = the save XML node holding the <blacklist> elements. Each element is
+// read into a record by matching its attribute and child ids against the SaveXML ids,
+// skipping any it does not know, and the record's check is rebuilt through
+// BlacklistFilterBuild. Called once, by the universe load. Its error strings name it
+// "BlacklistData::Import(): ...". Declared returning void* as above.
+// Verified: v9.00 build 900-611726, RVA 0x00371D20. Per-build RVA from version_db.
+X4_FUNC(void*, BlacklistData_Import, (void* registry, void* lists))
+
+// LookupKeyName_FormatXMLName — the name a SaveXML id stands for, used as the save is
+// written. id = a pointer to the int32 id. Reads the namespace from the slot at
+// X4_RVA_SAVEXML_NAMESPACE and binary-searches its id-sorted entries; an unknown id
+// logs "The lookup ID %lld does not exist in '%s'" and returns the empty name. Each
+// lookup namespace has its own instantiation; this is the SaveXML one. The return is
+// never null while the namespace exists.
+// Verified: v9.00 build 900-611726, RVA 0x00122550. Per-build RVA from version_db.
+X4_FUNC(const char*, LookupKeyName_FormatXMLName, (const int32_t* id))
+
+// LookupKeyName_LookupName — the SaveXML id of a name, used as a save is read. Reads
+// the namespace from the same slot; returns 0 without a lookup when it is null. An
+// unknown name is passed with `context` to the error logger ("The key name ... is not
+// recognized") and returns 0.
+// Verified: v9.00 build 900-611726, RVA 0x00123690. Per-build RVA from version_db.
+X4_FUNC(int32_t, LookupKeyName_LookupName, (const char* name, const void* context))
+
+// XmlNode_SetAttribute — sets attribute `id` of a save XML node to `value`, adding it
+// when the node has none with that id. The node's attributes are a small vector of
+// 0x28-byte entries {int32 id; std::string value at +8} at +0x18 (4 inline, capacity
+// at +0xB8, count at +0xC0). Called by BlacklistData_Export for its flag attributes.
+// Verified: v9.00 build 900-611726, RVA 0x00123700. Per-build RVA from version_db.
+X4_FUNC(void, XmlNode_SetAttribute, (void* node, int32_t id, const char* value))
+
+// XmlNodeVector_PushBack — appends the pointer at `item` to a small pointer vector:
+// 4 inline slots at +0x00, capacity at +0x20, count at +0x28, growing into the game
+// heap. A save XML node's children are such a vector at +0xC8; BlacklistData_Export
+// appends each <blacklist> node to its parent's children with it.
+// Verified: v9.00 build 900-611726, RVA 0x000CB8C0. Per-build RVA from version_db.
+X4_FUNC(void, XmlNodeVector_PushBack, (void* vector, void* const* item))

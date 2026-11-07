@@ -14,6 +14,7 @@
 #include "extension_manager.h"
 #include "game_api.h"
 #include "hook_manager.h"
+#include "save_xml.h"
 #include "settings_manager.h"
 #include "version.h"
 #include "x4native_defs.h"
@@ -141,6 +142,25 @@ X4GameOffsets s_offsets = {
     .trade_buyer               = X4_TRADE_OFFSET_BUYER,
     .controllable_order_default = X4_CONTROLLABLE_OFFSET_ORDER_DEFAULT,
     .script_action_command_id  = X4_SCRIPT_ACTION_OFFSET_COMMAND_ID,
+
+    // --- Save XML ---
+    .savexml_namespace         = nullptr,
+    .xml_node_size             = X4_XML_NODE_SIZE,
+    .xml_node_element          = X4_XML_NODE_OFFSET_ELEMENT,
+    .xml_node_attributes       = X4_XML_NODE_OFFSET_ATTRIBUTES,
+    .xml_node_children         = X4_XML_NODE_OFFSET_CHILDREN,
+    .xml_node_flags            = X4_XML_NODE_OFFSET_FLAGS,
+    .xml_node_source_line      = X4_XML_NODE_OFFSET_SOURCE_LINE,
+    .xml_node_source_column    = X4_XML_NODE_OFFSET_SOURCE_COLUMN,
+    .xml_node_prefix           = X4_XML_NODE_OFFSET_PREFIX,
+    .xml_node_text             = X4_XML_NODE_OFFSET_TEXT,
+    .xml_node_attribute_capacity = X4_XML_NODE_OFFSET_ATTRIBUTE_CAPACITY,
+    .xml_node_attribute_count  = X4_XML_NODE_OFFSET_ATTRIBUTE_COUNT,
+    .xml_node_child_capacity   = X4_XML_NODE_OFFSET_CHILD_CAPACITY,
+    .xml_node_child_count      = X4_XML_NODE_OFFSET_CHILD_COUNT,
+    .xml_attribute_size        = X4_XML_ATTRIBUTE_SIZE,
+    .xml_attribute_id          = X4_XML_ATTRIBUTE_OFFSET_ID,
+    .xml_attribute_value       = X4_XML_ATTRIBUTE_OFFSET_VALUE,
 };
 
 static std::string g_ext_root;
@@ -178,6 +198,7 @@ static void resolve_offset_pointers(uintptr_t base) {
     s_offsets.radar_event_vtable   = reinterpret_cast<void*>(base + X4_RADAR_EVENT_VTABLE_RVA);
     s_offsets.blacklist_registry   = reinterpret_cast<void*>(base + X4_RVA_BLACKLIST_REGISTRY);
     s_offsets.order_id_map         = reinterpret_cast<void*>(base + X4_RVA_ORDER_ID_MAP);
+    s_offsets.savexml_namespace    = reinterpret_cast<void*>(base + X4_RVA_SAVEXML_NAMESPACE);
 }
 
 // ---------------------------------------------------------------------------
@@ -410,6 +431,76 @@ static void remove_md_event_hook() {
 }
 
 // ---------------------------------------------------------------------------
+// SaveXML name hooks — the names extensions add through x4n_savexml.h
+// ---------------------------------------------------------------------------
+// MinHook detours on the SaveXML namespace's two lookups: SaveXml's own
+// format_xml_name and lookup_name, which answer a name or number an extension
+// added from the shared table (save_xml.h) and pass every other call to the
+// game. Both functions read the SaveXML namespace from its global slot
+// themselves; every call they receive is a SaveXML lookup. See
+// docs/rev/SAVE_XML.md.
+
+static const char* const kSaveXmlLookups[] = {"LookupKeyName_FormatXMLName", "LookupKeyName_LookupName"};
+
+// Creates the hook without enabling it; the target, or null on failure.
+static void* create_savexml_hook(const char* name, void* detour, void** original) {
+    void* target = x4n::GameAPI::get_internal(name);
+    if (!target) {
+        x4n::Logger::warn("SaveXML name hook: {} not resolved (missing RVA for this build?)", name);
+        return nullptr;
+    }
+    const MH_STATUS status = MH_CreateHook(target, detour, original);
+    if (status != MH_OK) {
+        x4n::Logger::error("SaveXML name hook: MH_CreateHook({}) failed: {}", name, MH_StatusToString(status));
+        return nullptr;
+    }
+    return target;
+}
+
+// Disables and removes both hooks, then drops the originals. Attached means
+// both hooks were created, so there is nothing to remove otherwise.
+static void remove_savexml_hooks() {
+    if (!x4n::SaveXml::attached()) return;
+    for (const char* name : kSaveXmlLookups) {
+        void* target = x4n::GameAPI::get_internal(name);
+        MH_DisableHook(target);
+        MH_RemoveHook(target);
+    }
+    x4n::SaveXml::detach();
+}
+
+// Both lookups or neither: a name the save can be written with but not read
+// back, or the reverse, would lose the data it carries. The originals are
+// attached before either hook is enabled, so no call reaches SaveXml without
+// them.
+static bool install_savexml_hooks() {
+    x4n::SaveXml::FormatXMLNameFn format = nullptr;
+    x4n::SaveXml::LookupNameFn    lookup = nullptr;
+    void* format_target = create_savexml_hook(kSaveXmlLookups[0], reinterpret_cast<void*>(&x4n::SaveXml::format_xml_name),
+                                              reinterpret_cast<void**>(&format));
+    void* lookup_target = format_target
+        ? create_savexml_hook(kSaveXmlLookups[1], reinterpret_cast<void*>(&x4n::SaveXml::lookup_name),
+                              reinterpret_cast<void**>(&lookup))
+        : nullptr;
+    if (!lookup_target) {
+        if (format_target) MH_RemoveHook(format_target);
+        return false;
+    }
+
+    x4n::SaveXml::attach(format, lookup);
+    for (void* target : {format_target, lookup_target}) {
+        const MH_STATUS status = MH_EnableHook(target);
+        if (status != MH_OK) {
+            x4n::Logger::error("SaveXML name hook: MH_EnableHook failed: {}", MH_StatusToString(status));
+            remove_savexml_hooks();
+            return false;
+        }
+    }
+    x4n::Logger::info("SaveXML name hooks installed (x4n::savexml)");
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // Dispatch implementations (called by proxy via function pointers)
 // ---------------------------------------------------------------------------
 
@@ -449,6 +540,7 @@ static void impl_prepare_reload() {
     remove_md_event_hook();
     remove_radar_visibility_hook();
     remove_frame_tick_hook();
+    remove_savexml_hooks();
     x4n::HookManager::remove_all();
 }
 
@@ -459,6 +551,7 @@ static void impl_shutdown() {
     remove_md_event_hook();
     remove_radar_visibility_hook();
     remove_frame_tick_hook();
+    remove_savexml_hooks();
     x4n::HookManager::shutdown();
     x4n::GameAPI::shutdown();
     x4n::EventSystem::shutdown();
@@ -548,6 +641,9 @@ static int core_init_impl(CoreInitContext* ctx) {
 
         // 5d. MD event dispatch hook (core-owned, fires on_md_before/on_md_after)
         install_md_event_hook();
+
+        // 5e. SaveXML name hooks (core-owned, serve x4n::savexml)
+        install_savexml_hooks();
     }
 
     // 6. Extension manager
