@@ -228,3 +228,103 @@ X4_FUNC(float, FactionRelation_GetFloat, (void* faction_a, void* faction_b))
 // output directory through the game VFS. Not exported.
 // Verified: v9.00 build 900-611726, RVA 0x0122DFA0. Per-build RVA from version_db.
 X4_FUNC(void, Screenshot_ArmSingleShot, (const void* subdir_str))
+
+// BlacklistFilterBuild — rebuilds a list record's evaluated filter object at +0x70.
+// record = the list record (the registry node's +0x28). The function begins by
+// destroying whatever sits at +0x70 through its vtable slot 0 with argument 1 and
+// clearing the slot, then builds the new root from the record's macros, factions,
+// relation and hazardous flag; the slot stays null for a list with none of them.
+// Called on a save load, on an edit (the exports UpdateBlacklist and UpdateBlacklist2),
+// on creation, and by a rebuild of every list; see docs/rev/BLACKLISTS.md section 3.
+// Declared returning void* rather than void on purpose: the caller does not use the
+// value, and an after-hook that swallowed a real return would corrupt the caller,
+// while the reverse is harmless.
+// Verified: v9.00 build 900-611726, RVA 0x00370740. Per-build RVA from version_db.
+X4_FUNC(void*, BlacklistFilterBuild, (void* record))
+
+// BlacklistFetchForControllable — resolves the list a controllable uses for a type and
+// group and returns that list's evaluated filter object ([record+0x70]), or the
+// controllable's own default through its vtable slot 0x1620. The type, flag and group
+// arguments are passed through to the effective-list resolver untouched. Called by the
+// export IsComponentBlacklisted and by the match compiler.
+// Verified: v9.00 build 900-611726, RVA 0x00463180. Per-build RVA from version_db.
+X4_FUNC(void*, BlacklistFetchForControllable, (void* controllable, int type, int flag, int group))
+
+// BlacklistTypeFromName — a list type name ("sectortravel", "sectoractivity",
+// "objectactivity") to its index, by binary search over the sorted 24-byte entry table
+// filled at startup. The first argument is never read; the second is a **pointer to a
+// 16-byte string_view struct** {const char* ptr; uint64_t len} — the same calling
+// convention as FactionRelation_LookupReasonID above, and the same access violation if
+// it is passed as separate arguments instead.
+// Verified: v9.00 build 900-611726, RVA 0x0030E2D0. Per-build RVA from version_db.
+X4_FUNC(int, BlacklistTypeFromName, (void* unused, const void* type_string_view))
+
+// BlacklistRecordById — the list record for an id: the tree header in the first
+// argument, its root at +0x18, its sentinel at +0x10, a node's id at +0x20 and its
+// record at +0x28. Returns 0 for a non-positive id or a miss.
+// Verified: v9.00 build 900-611726, RVA 0x00371540. Per-build RVA from version_db.
+X4_FUNC(void*, BlacklistRecordById, (void* registry, int id))
+
+// AutoIDMap_Lookup — XLib::AutoIDMap's lookup of a typed handle: a table of eight
+// pointer slots at +0x58, indexed by bits 15-17 of the masked handle. Over the order
+// id map (X4_RVA_ORDER_ID_MAP), mask 2 resolves a trade.
+// The only call in the export IsValidTrade; returns 0 unless the handle is live.
+// Verified: v9.00 build 900-611726, RVA 0x0033D420. Per-build RVA from version_db.
+X4_FUNC(void*, AutoIDMap_Lookup, (void* table, uint64_t handle, int mask))
+
+// FindOfferAction — the script action handler that runs find_sell_offer and
+// find_buy_offer. action = the script action object; its command id, a uint32 at
+// X4_SCRIPT_ACTION_OFFSET_COMMAND_ID, selects the branch: 0x7B0 runs find_sell_offer
+// (the searching ship buys), 0x74E runs find_buy_offer (the ship sells). The trade
+// searches of both branches test candidate partners against the ship's trade list
+// before the handler returns. Reads rcx and r8; rdx and r9 are passed through.
+// Verified: v9.00 build 900-611726, RVA 0x00B8F000. Per-build RVA from version_db.
+X4_FUNC(void*, FindOfferAction, (void* action, void* arg2, void* arg3, void* arg4))
+
+// BlacklistData_Export — writes the list registry into the save. registry = the list
+// registry (X4_RVA_BLACKLIST_REGISTRY, dereferenced); parent = the save XML node the
+// lists are written under. For each record it allocates a 0xF8-byte node, sets its
+// element id to 0x67 (<blacklist>), fills its attributes and children from the record,
+// and appends it to parent's children (+0xC8). Called once, by the universe save.
+// Declared returning void* for the same reason as BlacklistFilterBuild.
+// Verified: v9.00 build 900-611726, RVA 0x003725E0. Per-build RVA from version_db.
+X4_FUNC(void*, BlacklistData_Export, (void* registry, void* parent))
+
+// BlacklistData_Import — reads the list registry back from a save. registry = the list
+// registry; lists = the save XML node holding the <blacklist> elements. Each element is
+// read into a record by matching its attribute and child ids against the SaveXML ids,
+// skipping any it does not know, and the record's check is rebuilt through
+// BlacklistFilterBuild. Called once, by the universe load. Its error strings name it
+// "BlacklistData::Import(): ...". Declared returning void* as above.
+// Verified: v9.00 build 900-611726, RVA 0x00371D20. Per-build RVA from version_db.
+X4_FUNC(void*, BlacklistData_Import, (void* registry, void* lists))
+
+// LookupKeyName_FormatXMLName — the name a SaveXML id stands for, used as the save is
+// written. id = a pointer to the int32 id. Reads the namespace from the slot at
+// X4_RVA_SAVEXML_NAMESPACE and binary-searches its id-sorted entries; an unknown id
+// logs "The lookup ID %lld does not exist in '%s'" and returns the empty name. Each
+// lookup namespace has its own instantiation; this is the SaveXML one. The return is
+// never null while the namespace exists.
+// Verified: v9.00 build 900-611726, RVA 0x00122550. Per-build RVA from version_db.
+X4_FUNC(const char*, LookupKeyName_FormatXMLName, (const int32_t* id))
+
+// LookupKeyName_LookupName — the SaveXML id of a name, used as a save is read. Reads
+// the namespace from the same slot; returns 0 without a lookup when it is null. An
+// unknown name is passed with `context` to the error logger ("The key name ... is not
+// recognized") and returns 0.
+// Verified: v9.00 build 900-611726, RVA 0x00123690. Per-build RVA from version_db.
+X4_FUNC(int32_t, LookupKeyName_LookupName, (const char* name, const void* context))
+
+// XmlNode_SetAttribute — sets attribute `id` of a save XML node to `value`, adding it
+// when the node has none with that id. The node's attributes are a small vector of
+// 0x28-byte entries {int32 id; std::string value at +8} at +0x18 (4 inline, capacity
+// at +0xB8, count at +0xC0). Called by BlacklistData_Export for its flag attributes.
+// Verified: v9.00 build 900-611726, RVA 0x00123700. Per-build RVA from version_db.
+X4_FUNC(void, XmlNode_SetAttribute, (void* node, int32_t id, const char* value))
+
+// XmlNodeVector_PushBack — appends the pointer at `item` to a small pointer vector:
+// 4 inline slots at +0x00, capacity at +0x20, count at +0x28, growing into the game
+// heap. A save XML node's children are such a vector at +0xC8; BlacklistData_Export
+// appends each <blacklist> node to its parent's children with it.
+// Verified: v9.00 build 900-611726, RVA 0x000CB8C0. Per-build RVA from version_db.
+X4_FUNC(void, XmlNodeVector_PushBack, (void* vector, void* const* item))

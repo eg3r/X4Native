@@ -17,6 +17,9 @@
 // NOT included (never change between builds):
 //   - Algorithm constants (X4_SEED_LCG_*, X4_ORDER_PARAM_TYPE_*)
 //   - Enum values (X4RoomType)
+//
+// APPEND-ONLY - never remove or reorder fields. An extension reads each field
+// at the offset its SDK compiled in, so new fields go at the end.
 // ==========================================================================
 #pragma once
 
@@ -118,6 +121,40 @@ typedef struct X4GameOffsets {
     uint32_t  room_name;                   // X4_ROOM_OFFSET_NAME
     uint32_t  room_private;                // X4_ROOM_OFFSET_PRIVATE
     uint32_t  room_persistent;             // X4_ROOM_OFFSET_PERSISTENT
+
+    // === Blacklists and orders ===
+    void*     blacklist_registry;          // X4_RVA_BLACKLIST_REGISTRY (pointer slot: deref for the tree header)
+    void*     order_id_map;                // X4_RVA_ORDER_ID_MAP (pointer slot: deref for the map)
+    uint32_t  blacklist_record_type;       // X4_BLACKLIST_OFFSET_TYPE
+    uint32_t  blacklist_record_name;       // X4_BLACKLIST_OFFSET_NAME (std::string)
+    uint32_t  blacklist_record_filter;     // X4_BLACKLIST_OFFSET_FILTER
+    uint32_t  controllable_order_queue;    // X4_CONTROLLABLE_OFFSET_ORDER_QUEUE
+    uint32_t  controllable_order_current_index; // X4_CONTROLLABLE_OFFSET_ORDER_CURRENT_INDEX
+    uint32_t  order_definition;            // X4_ORDER_OFFSET_DEFINITION
+    uint32_t  order_param_values;          // X4_ORDER_OFFSET_PARAM_VALUES
+    uint32_t  trade_seller;                // X4_TRADE_OFFSET_SELLER
+    uint32_t  trade_buyer;                 // X4_TRADE_OFFSET_BUYER
+    uint32_t  controllable_order_default;  // X4_CONTROLLABLE_OFFSET_ORDER_DEFAULT
+    uint32_t  script_action_command_id;    // X4_SCRIPT_ACTION_OFFSET_COMMAND_ID
+
+    // === Save XML ===
+    void*     savexml_namespace;           // X4_RVA_SAVEXML_NAMESPACE (pointer slot: deref for the namespace)
+    uint32_t  xml_node_size;               // X4_XML_NODE_SIZE
+    uint32_t  xml_node_element;            // X4_XML_NODE_OFFSET_ELEMENT
+    uint32_t  xml_node_attributes;         // X4_XML_NODE_OFFSET_ATTRIBUTES
+    uint32_t  xml_node_children;           // X4_XML_NODE_OFFSET_CHILDREN
+    uint32_t  xml_node_flags;              // X4_XML_NODE_OFFSET_FLAGS
+    uint32_t  xml_node_source_line;        // X4_XML_NODE_OFFSET_SOURCE_LINE
+    uint32_t  xml_node_source_column;      // X4_XML_NODE_OFFSET_SOURCE_COLUMN
+    uint32_t  xml_node_prefix;             // X4_XML_NODE_OFFSET_PREFIX
+    uint32_t  xml_node_text;               // X4_XML_NODE_OFFSET_TEXT
+    uint32_t  xml_node_attribute_capacity; // X4_XML_NODE_OFFSET_ATTRIBUTE_CAPACITY
+    uint32_t  xml_node_attribute_count;    // X4_XML_NODE_OFFSET_ATTRIBUTE_COUNT
+    uint32_t  xml_node_child_capacity;     // X4_XML_NODE_OFFSET_CHILD_CAPACITY
+    uint32_t  xml_node_child_count;        // X4_XML_NODE_OFFSET_CHILD_COUNT
+    uint32_t  xml_attribute_size;          // X4_XML_ATTRIBUTE_SIZE
+    uint32_t  xml_attribute_id;            // X4_XML_ATTRIBUTE_OFFSET_ID
+    uint32_t  xml_attribute_value;         // X4_XML_ATTRIBUTE_OFFSET_VALUE
 } X4GameOffsets;
 
 #ifdef __cplusplus

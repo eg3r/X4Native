@@ -16,6 +16,7 @@
 //       ship.order_mining_routine();              // autonomous mining
 //       ship.order_recon(sector_id);              // military reconnaissance
 //       ship.order_tactical(target_id, 75);       // fleet coordination
+//       void* running = ship.current_order();     // the order it executes
 //   }
 //
 // Order creation bypasses the player-ownership check in the exported
@@ -77,6 +78,12 @@ enum class OrderMode : int {
 class Ship {
     UniverseID id_;
     X4Component* comp_;
+
+    /// The field at `offset` into the ship's component.
+    template <typename T>
+    T field(uint32_t offset) const {
+        return *reinterpret_cast<const T*>(reinterpret_cast<const uint8_t*>(comp_) + offset);
+    }
 
     // ---------------------------------------------------------------
     // Order param setters — private implementation detail.
@@ -146,6 +153,45 @@ public:
 
     bool valid() const { return comp_ != nullptr; }
     UniverseID id() const { return id_; }
+
+    // ---------------------------------------------------------------
+    // Orders held.
+    // The order queue (Queue and Immediate orders, see OrderMode) is a
+    // vector of order pointers at X4_CONTROLLABLE_OFFSET_ORDER_QUEUE;
+    // X4_CONTROLLABLE_OFFSET_ORDER_CURRENT_INDEX is the queue position
+    // being executed. The Default order sits outside the queue at
+    // X4_CONTROLLABLE_OFFSET_ORDER_DEFAULT and runs only while the queue
+    // is empty.
+    // ---------------------------------------------------------------
+
+    /// The orders in the queue, in queue order. Empty for an invalid ship.
+    std::vector<void*> order_queue() const {
+        auto* off = detail::offsets();
+        if (!valid() || !off) return {};
+        void* const* begin = field<void* const*>(off->controllable_order_queue);
+        void* const* end = field<void* const*>(off->controllable_order_queue + 8);
+        if (!begin || end < begin) return {};
+        return std::vector<void*>(begin, end);
+    }
+
+    /// The Default (standing) order, or null when the ship has none.
+    void* default_order() const {
+        auto* off = detail::offsets();
+        if (!valid() || !off) return nullptr;
+        return field<void*>(off->controllable_order_default);
+    }
+
+    /// The order the ship executes: the queue's current entry while the queue is
+    /// not empty, otherwise the Default order. Null when the current index lies
+    /// outside a non-empty queue, or when the ship has no order at all.
+    void* current_order() const {
+        auto* off = detail::offsets();
+        if (!valid() || !off) return nullptr;
+        const std::vector<void*> queue = order_queue();
+        if (queue.empty()) return default_order();
+        const size_t index = field<size_t>(off->controllable_order_current_index);
+        return index < queue.size() ? queue[index] : nullptr;
+    }
 
     // ---------------------------------------------------------------
     // Order methods — public API.
