@@ -628,6 +628,28 @@ typedef struct alignas(16) X4PlanEntry {
 #define X4_OBJECT_OFFSET_RADAR_VISIBLE          0x400  /* uint8 — radar visibility, set by engine property system + MD action */
 #define X4_OBJECT_OFFSET_FORCED_RADAR_VISIBLE   0x401  /* uint8 — forced radar visibility (satellites, nav beacons) */
 
+// ======== BLACKLISTS AND ORDERS ===========================================
+// The trade list registry and its records, the order id map, and the field
+// offsets of a controllable's orders, an order and a trade.
+// Verified against X4.exe v9.00 build 900-611726 —
+//   BlacklistFetchForControllable (RVA 0x00463180) loads 0x146CF1850 and walks
+//   [registry+0x18] as the tree root;
+//   BlacklistFilterBuild (RVA 0x00370740) destroys [record+0x70] through its vtable
+//   slot 0 with argument 1 and clears the slot before rebuilding;
+//   CreateOrderInternal (RVA 0x00463400) stores an order of kind 3 at
+//   [controllable+0x500] and appends every other order to the queue at +0x4B0.
+#define X4_RVA_BLACKLIST_REGISTRY       0x06CF1850  /* void** — pointer slot for the list registry (tree header) */
+#define X4_RVA_ORDER_ID_MAP             0x06CF1750  /* void** — pointer slot for the XLib::AutoIDMap<U::OrderIDBase> that AutoIDMap_Lookup takes */
+#define X4_BLACKLIST_OFFSET_TYPE        0x08        /* int32  — the list's type index */
+#define X4_BLACKLIST_OFFSET_NAME        0x10        /* std::string (32 bytes) — the list's name */
+#define X4_BLACKLIST_OFFSET_FILTER      0x70        /* void*  — the evaluated filter object */
+#define X4_CONTROLLABLE_OFFSET_ORDER_QUEUE   0x4B0  /* order pointer vector begin (end at +0x4B8) */
+#define X4_CONTROLLABLE_OFFSET_ORDER_CURRENT_INDEX 0x4E0  /* size_t — zero-based index of the current order in the queue */
+#define X4_ORDER_OFFSET_DEFINITION      0x10        /* void*  — the order's definition */
+#define X4_ORDER_OFFSET_PARAM_VALUES    0x58        /* 16-byte script values in parameter order, payload at +0x08 */
+#define X4_TRADE_OFFSET_SELLER          0x10        /* uint64 — the seller's component id */
+#define X4_TRADE_OFFSET_BUYER           0x18        /* uint64 — the buyer's component id */
+
 // ======== SECTOR RESOURCE AREAS ===========================================
 // ResourceArea children of a Sector, used for unfiltered resource yield access.
 // GetDiscoveredSectorResources (FFI) has a player discovery filter at RA+0x1D0.

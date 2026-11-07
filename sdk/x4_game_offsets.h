@@ -17,6 +17,9 @@
 // NOT included (never change between builds):
 //   - Algorithm constants (X4_SEED_LCG_*, X4_ORDER_PARAM_TYPE_*)
 //   - Enum values (X4RoomType)
+//
+// APPEND-ONLY - never remove or reorder fields. An extension reads each field
+// at the offset its SDK compiled in, so new fields go at the end.
 // ==========================================================================
 #pragma once
 
@@ -118,6 +121,19 @@ typedef struct X4GameOffsets {
     uint32_t  room_name;                   // X4_ROOM_OFFSET_NAME
     uint32_t  room_private;                // X4_ROOM_OFFSET_PRIVATE
     uint32_t  room_persistent;             // X4_ROOM_OFFSET_PERSISTENT
+
+    // === Blacklists and orders ===
+    void*     blacklist_registry;          // X4_RVA_BLACKLIST_REGISTRY (pointer slot: deref for the tree header)
+    void*     order_id_map;                // X4_RVA_ORDER_ID_MAP (pointer slot: deref for the map)
+    uint32_t  blacklist_record_type;       // X4_BLACKLIST_OFFSET_TYPE
+    uint32_t  blacklist_record_name;       // X4_BLACKLIST_OFFSET_NAME (std::string)
+    uint32_t  blacklist_record_filter;     // X4_BLACKLIST_OFFSET_FILTER
+    uint32_t  controllable_order_queue;    // X4_CONTROLLABLE_OFFSET_ORDER_QUEUE
+    uint32_t  controllable_order_current_index; // X4_CONTROLLABLE_OFFSET_ORDER_CURRENT_INDEX
+    uint32_t  order_definition;            // X4_ORDER_OFFSET_DEFINITION
+    uint32_t  order_param_values;          // X4_ORDER_OFFSET_PARAM_VALUES
+    uint32_t  trade_seller;                // X4_TRADE_OFFSET_SELLER
+    uint32_t  trade_buyer;                 // X4_TRADE_OFFSET_BUYER
 } X4GameOffsets;
 
 #ifdef __cplusplus

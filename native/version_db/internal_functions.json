@@ -399,6 +399,81 @@
         "byte_sig_note": "Prologue: home (rbx,rsi,rdi); push rbp,r12-r15; lea rbp,[rsp-N]; sub rsp,M; mov rdi,rcx. Frame lea disp + sub imm wildcarded (were literal + truncated mid-immediate before). Captured @ 611726 0x122DFA0, verified via all three screenshot strings."
       },
       "900-611726": { "rva": "0x0122DFA0" }
+    },
+    "BlacklistFilterBuild": {
+      "_find_hints": {
+        "method": "byte_sig",
+        "steps": [
+          "1. Search for the prologue signature below: home rbx/rsi/rdi, push rbp/r12-r15, lea rbp,[rsp-37h], sub rsp,100h",
+          "2. The containing function begins by destroying [rcx+0x70] through its vtable slot 0 with edx=1 and then clearing +0x70",
+          "3. Verify: called by the PE export UpdateBlacklist2 after it writes a list's fields, and on list creation",
+          "4. Verify: only the first argument is read (mov r14,rcx; rdx/r8/r9 untouched) — the list record"
+        ],
+        "verify_strings": [],
+        "byte_sig": "48 89 5C 24 10 48 89 74 24 18 48 89 7C 24 20 55 41 54 41 55 41 56 41 57 48 8D 6C 24 ?? 48 81 EC ?? ?? ?? ?? 4C 8B F1",
+        "byte_sig_note": "First 39 bytes. Prologue: register homes, pushes of rbp and r12-r15, lea rbp,[rsp-N], sub rsp,M, then mov r14,rcx (the record). Wildcarded: frame displacement, stack immediate. matches once in X4.exe v9.00 build 900-611726 (RVA 0x00370740)."
+      },
+      "900-611726": { "rva": "0x00370740" }
+    },
+    "BlacklistFetchForControllable": {
+      "_find_hints": {
+        "method": "byte_sig",
+        "steps": [
+          "1. Search for the prologue signature below: home rbx, push rdi, sub rsp,20h, mov rdi,rcx",
+          "2. It calls the effective-list resolver (FUN_140463020) with its own arguments untouched, then loads the list registry global and walks it by the returned id",
+          "3. Verify: the resolved record's [record+0x70] is returned; the no-list path calls [controllable]->vtable[0x1620]",
+          "4. Verify: called by the PE export IsComponentBlacklisted and by the match compiler"
+        ],
+        "verify_strings": [],
+        "byte_sig": "48 89 5C 24 08 57 48 83 EC ?? 48 8B F9 E8 ?? ?? ?? ?? 48 8B 1D ?? ?? ?? ?? 83 F8 01 7C ?? 48 8B 53 18",
+        "byte_sig_note": "First 34 bytes. Prologue, the call to the effective-list resolver, the load of the list registry global and the type check. Wildcarded: RIP-relative displacement, branch displacement, rel32 call displacement, stack immediate. matches once in X4.exe v9.00 build 900-611726 (RVA 0x00463180)."
+      },
+      "900-611726": { "rva": "0x00463180" }
+    },
+    "BlacklistTypeFromName": {
+      "_find_hints": {
+        "method": "structural",
+        "steps": [
+          "1. A list type name to its index by binary search over a sorted table of 24-byte entries {char* name, uint64_t length, int64_t value} at DAT_143D18B18, with the entry count at DAT_143D18B78",
+          "2. The second argument is a pointer to a 16-byte string_view struct {const char* ptr; uint64_t len} (movups xmm0,[rdx]); the first argument is never read",
+          "3. Verify: called by the PE export SetControllableBlacklist with a type name, and by GetControllableBlacklistID",
+          "4. Verify: the table is in uninitialised .data and is filled at startup, so its contents are not readable from the file"
+        ],
+        "verify_strings": [],
+        "byte_sig": "4C 8B DC 49 89 4B 08 53 56 57 41 55 48 83 EC ?? 48 8B 05 ?? ?? ?? ?? 48 8D 1D ?? ?? ?? ?? 4C 8B EA",
+        "byte_sig_note": "First 33 bytes. Prologue (mov r11,rsp; home rcx; pushes; sub rsp), then the loads of the type table's entry count and entries. Wildcarded: RIP-relative displacement, stack immediate. matches 95 places in X4.exe v9.00 build 900-611726, one of them RVA 0x0030E2D0: the game's name-to-index lookups over sorted tables share these bytes, each loading its own table, so the find hints identify this one."
+      },
+      "900-611726": { "rva": "0x0030E2D0" }
+    },
+    "BlacklistRecordById": {
+      "_find_hints": {
+        "method": "byte_sig",
+        "steps": [
+          "1. Search for the prologue signature below: test edx,edx / jle / mov rax,[rcx+0x18] / lea r8,[rcx+0x10]",
+          "2. It is the generic id-to-record traversal of the registry tree: the header is rcx, the root at [rcx+0x18], the sentinel at [rcx+0x10], the node id at [node+0x20] and the node's record at [node+0x28]",
+          "3. Verify: called with the list registry by the PE export IsComponentBlacklisted on its default-list path",
+          "4. Verify: returns 0 for a non-positive id or a miss"
+        ],
+        "verify_strings": [],
+        "byte_sig": "85 D2 7E ?? 48 8B 41 18 4C 8D 41 10 49 8B C8 48 85 C0 74 ?? 39 50 20 7C ?? 48 8B C8 48 8B 40 08 EB ?? 48 8B 40 10 48 85 C0 75 ?? 49 3B C8 74 ?? 3B 51 20 7C ??",
+        "byte_sig_note": "First 53 bytes. The non-positive id check and the walk of the registry tree from [rcx+0x18]. Wildcarded: branch displacement. matches once in X4.exe v9.00 build 900-611726 (RVA 0x00371540)."
+      },
+      "900-611726": { "rva": "0x00371540" }
+    },
+    "AutoIDMap_Lookup": {
+      "_find_hints": {
+        "method": "byte_sig",
+        "steps": [
+          "1. Search for the prologue signature below: home rbx; mov r11d,r8d; mov r9,rdx; test rdx,rdx / je",
+          "2. It indexes a table of eight pointer slots at [rcx+0x58] by bits 15-17 of a masked handle and returns an entry pointer",
+          "3. Verify: the only call in the PE export IsValidTrade, which passes the order id map (XLib::AutoIDMap<U::OrderIDBase>) and mask 2",
+          "4. Verify: returns 0 for a null handle, a zero mask or an out-of-range index"
+        ],
+        "verify_strings": [],
+        "byte_sig": "48 89 5C 24 08 45 8B D8 4C 8B CA 48 85 D2 0F 84 ?? ?? ?? ?? 41 8B C1 25 FF FF 03 00 0F 84 ?? ?? ?? ??",
+        "byte_sig_note": "First 34 bytes. Home rbx, the null-handle check and the test of the handle's mask bits. Wildcarded: branch displacement. matches once in X4.exe v9.00 build 900-611726 (RVA 0x0033D420)."
+      },
+      "900-611726": { "rva": "0x0033D420" }
     }
   }
 }
