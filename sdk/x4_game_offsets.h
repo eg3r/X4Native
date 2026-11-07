@@ -134,6 +134,7 @@ typedef struct X4GameOffsets {
     uint32_t  order_param_values;          // X4_ORDER_OFFSET_PARAM_VALUES
     uint32_t  trade_seller;                // X4_TRADE_OFFSET_SELLER
     uint32_t  trade_buyer;                 // X4_TRADE_OFFSET_BUYER
+    uint32_t  controllable_order_default;  // X4_CONTROLLABLE_OFFSET_ORDER_DEFAULT
 } X4GameOffsets;
 
 #ifdef __cplusplus

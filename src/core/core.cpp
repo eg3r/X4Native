@@ -139,6 +139,7 @@ X4GameOffsets s_offsets = {
     .order_param_values        = X4_ORDER_OFFSET_PARAM_VALUES,
     .trade_seller              = X4_TRADE_OFFSET_SELLER,
     .trade_buyer               = X4_TRADE_OFFSET_BUYER,
+    .controllable_order_default = X4_CONTROLLABLE_OFFSET_ORDER_DEFAULT,
 };
 
 static std::string g_ext_root;

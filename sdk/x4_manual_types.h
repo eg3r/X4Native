@@ -649,6 +649,7 @@ typedef struct alignas(16) X4PlanEntry {
 #define X4_ORDER_OFFSET_PARAM_VALUES    0x58        /* 16-byte script values in parameter order, payload at +0x08 */
 #define X4_TRADE_OFFSET_SELLER          0x10        /* uint64 — the seller's component id */
 #define X4_TRADE_OFFSET_BUYER           0x18        /* uint64 — the buyer's component id */
+#define X4_CONTROLLABLE_OFFSET_ORDER_DEFAULT 0x500  /* void*  — the Default (standing) order, held outside the queue */
 
 // ======== SECTOR RESOURCE AREAS ===========================================
 // ResourceArea children of a Sector, used for unfiltered resource yield access.
