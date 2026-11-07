@@ -272,3 +272,12 @@ X4_FUNC(void*, BlacklistRecordById, (void* registry, int id))
 // Verified: v9.00 build 900-611726, RVA 0x0033D420. Per-build RVA from version_db.
 X4_FUNC(void*, AutoIDMap_Lookup, (void* table, uint64_t handle, int mask))
 
+// FindOfferAction — the script action handler that runs find_sell_offer and
+// find_buy_offer. action = the script action object; its command id, a uint32 at
+// X4_SCRIPT_ACTION_OFFSET_COMMAND_ID, selects the branch: 0x7B0 runs find_sell_offer
+// (the searching ship buys), 0x74E runs find_buy_offer (the ship sells). The trade
+// searches of both branches test candidate partners against the ship's trade list
+// before the handler returns. Reads rcx and r8; rdx and r9 are passed through.
+// Verified: v9.00 build 900-611726, RVA 0x00B8F000. Per-build RVA from version_db.
+X4_FUNC(void*, FindOfferAction, (void* action, void* arg2, void* arg3, void* arg4))
+

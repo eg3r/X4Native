@@ -630,14 +630,16 @@ typedef struct alignas(16) X4PlanEntry {
 
 // ======== BLACKLISTS AND ORDERS ===========================================
 // The trade list registry and its records, the order id map, and the field
-// offsets of a controllable's orders, an order and a trade.
+// offsets of a controllable's orders, an order, a trade and a script action.
 // Verified against X4.exe v9.00 build 900-611726 —
 //   BlacklistFetchForControllable (RVA 0x00463180) loads 0x146CF1850 and walks
 //   [registry+0x18] as the tree root;
 //   BlacklistFilterBuild (RVA 0x00370740) destroys [record+0x70] through its vtable
 //   slot 0 with argument 1 and clears the slot before rebuilding;
 //   CreateOrderInternal (RVA 0x00463400) stores an order of kind 3 at
-//   [controllable+0x500] and appends every other order to the queue at +0x4B0.
+//   [controllable+0x500] and appends every other order to the queue at +0x4B0;
+//   FindOfferAction (RVA 0x00B8F000) copies its first argument to r13 and branches
+//   on cmp dword [r13+8], 0x7B0 (find_sell_offer) against 0x74E (find_buy_offer).
 #define X4_RVA_BLACKLIST_REGISTRY       0x06CF1850  /* void** — pointer slot for the list registry (tree header) */
 #define X4_RVA_ORDER_ID_MAP             0x06CF1750  /* void** — pointer slot for the XLib::AutoIDMap<U::OrderIDBase> that AutoIDMap_Lookup takes */
 #define X4_BLACKLIST_OFFSET_TYPE        0x08        /* int32  — the list's type index */
@@ -650,6 +652,9 @@ typedef struct alignas(16) X4PlanEntry {
 #define X4_TRADE_OFFSET_SELLER          0x10        /* uint64 — the seller's component id */
 #define X4_TRADE_OFFSET_BUYER           0x18        /* uint64 — the buyer's component id */
 #define X4_CONTROLLABLE_OFFSET_ORDER_DEFAULT 0x500  /* void*  — the Default (standing) order, held outside the queue */
+#define X4_SCRIPT_ACTION_OFFSET_COMMAND_ID 0x08     /* uint32 — a script action's command id (X4_SCRIPT_COMMAND_*) */
+#define X4_SCRIPT_COMMAND_FIND_SELL_OFFER  0x7B0    /* find_sell_offer — the searching controllable buys */
+#define X4_SCRIPT_COMMAND_FIND_BUY_OFFER   0x74E    /* find_buy_offer — the searching controllable sells */
 
 // ======== SECTOR RESOURCE AREAS ===========================================
 // ResourceArea children of a Sector, used for unfiltered resource yield access.

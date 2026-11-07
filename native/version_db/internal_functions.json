@@ -474,6 +474,24 @@
         "byte_sig_note": "First 34 bytes. Home rbx, the null-handle check and the test of the handle's mask bits. Wildcarded: branch displacement. matches once in X4.exe v9.00 build 900-611726 (RVA 0x0033D420)."
       },
       "900-611726": { "rva": "0x0033D420" }
+    },
+    "FindOfferAction": {
+      "_find_hints": {
+        "method": "unique_string",
+        "steps": [
+          "1. Find the strings 'find_sell_offer does not have a suitable container or space to search in.' and 'find_buy_offer does not have a suitable container or space to search in.'",
+          "2. Both are referenced from one function: the action handler that runs find_sell_offer and find_buy_offer",
+          "3. Verify: the prologue matches the signature below (home rbx and r8, push rbp,rsi,rdi,r12-r15, lea rbp,[rsp-N], sub rsp,M, mov r12,r8)",
+          "4. Verify: the first use of rcx copies it to r13, and the handler branches on cmp dword [r13+8], 0x7B0 (find_sell_offer) and 0x74E (find_buy_offer)"
+        ],
+        "verify_strings": [
+          "find_sell_offer does not have a suitable container or space to search in.",
+          "find_buy_offer does not have a suitable container or space to search in."
+        ],
+        "byte_sig": "48 89 5C 24 10 4C 89 44 24 18 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ??",
+        "byte_sig_note": "First 36 bytes. Prologue: homes of rbx and r8, pushes of rbp, rsi, rdi and r12-r15, lea rbp,[rsp-N], sub rsp,M. Wildcarded: frame displacement, stack immediate. matches once in X4.exe v9.00 build 900-611726 (RVA 0x00B8F000)."
+      },
+      "900-611726": { "rva": "0x00B8F000" }
     }
   }
 }
