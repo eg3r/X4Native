@@ -4,6 +4,7 @@
 #include "game_api.h"
 #include "hook_manager.h"
 #include "save_xml.h"
+#include "save_xml_node.h"
 #include "settings_manager.h"
 #include "x4native_defs.h"
 
@@ -773,10 +774,39 @@ static void api_set_setting_string(const char* key, const char* value, void* api
 }
 
 // The SaveXML namespace as the game holds it now: null until the game has built it.
-static int32_t api_savexml_register(const char* name) {
+static int32_t api_savexml_register(const char* local_name, void* api_ptr, const char** out_name) {
+    if (out_name) *out_name = nullptr;
+    const char* ext_id = ext_id_from_api(api_ptr);
+    if (!ext_id) return 0;
     const void* ns = s_offsets.savexml_namespace
         ? *static_cast<void* const*>(s_offsets.savexml_namespace) : nullptr;
-    return SaveXml::register_name(ns, name);
+    return SaveXml::register_name(ns, ext_id, local_name, out_name);
+}
+
+static void* api_savexml_create_node(int32_t element) { return SaveXmlNode::create(element); }
+
+static int api_savexml_set_attribute(void* node, int32_t attribute, const char* value, void* api_ptr) {
+    return SaveXmlNode::set_attribute(node, attribute, value, ext_id_from_api(api_ptr)) ? 1 : 0;
+}
+
+static int api_savexml_append_child(void* parent, void* child) {
+    return SaveXmlNode::append_child(parent, child) ? 1 : 0;
+}
+
+static const char* api_savexml_get_attribute(const void* node, int32_t attribute) {
+    return SaveXmlNode::get_attribute(node, attribute);
+}
+
+static int32_t api_savexml_node_element(const void* node) { return SaveXmlNode::element(node); }
+
+static size_t api_savexml_node_children(const void* node, void** out, size_t capacity) {
+    return SaveXmlNode::children(node, out, capacity);
+}
+
+static int32_t api_savexml_lookup(const char* game_name) {
+    const void* ns = s_offsets.savexml_namespace
+        ? *static_cast<void* const*>(s_offsets.savexml_namespace) : nullptr;
+    return SaveXml::game_number(ns, game_name);
 }
 
 void ExtensionManager::fill_api(X4NativeAPI& api, ExtensionInfo& ext) {
@@ -813,6 +843,13 @@ void ExtensionManager::fill_api(X4NativeAPI& api, ExtensionInfo& ext) {
     api.get_lua_property          = g_get_lua_property;
     api.get_lua_property_str      = g_get_lua_property_str;
     api.savexml_register          = api_savexml_register;
+    api.savexml_lookup            = api_savexml_lookup;
+    api.savexml_create_node       = api_savexml_create_node;
+    api.savexml_set_attribute     = api_savexml_set_attribute;
+    api.savexml_append_child      = api_savexml_append_child;
+    api.savexml_get_attribute     = api_savexml_get_attribute;
+    api.savexml_node_element      = api_savexml_node_element;
+    api.savexml_node_children     = api_savexml_node_children;
     api._ext_id               = ext.extension_id.c_str();
     api._ext_display_name     = ext.display_name.c_str();
     api._ext_priority         = static_cast<intptr_t>(ext.priority);

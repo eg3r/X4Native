@@ -16,6 +16,17 @@
       </actions>
     </cue>
 
+    <!-- The core could not hook the save names (an unknown game build, or an unresolved function):
+         extensions cannot keep data in the save. Raised once the world is up, through x4native.lua. -->
+    <cue name="x4native_SaveXmlUnavailable" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'x4native'" control="'savexml_unavailable'" />
+      </conditions>
+      <actions>
+        <show_help custom="'X4Native: extensions cannot keep their data in the save with this game version. Saving now drops the data this save carries for them. Update X4Native.'" />
+      </actions>
+    </cue>
+
     <!-- Stage 2b: Signal Lua when game world is fully initialized (all gamestart MD cues complete).
          NOTE: event_game_started only fires for NEW GAME, not save loads. -->
     <cue name="x4native_GameStarted" instantiate="true">
