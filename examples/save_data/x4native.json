@@ -1,0 +1,5 @@
+{
+    "library": "native\\x4native_save_data.dll",
+    "priority": 100,
+    "min_api_version": 1
+}

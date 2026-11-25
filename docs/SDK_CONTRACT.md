@@ -38,6 +38,7 @@ extern "C" __declspec(dllexport) int x4native_api_version(void);
 | Per-extension context | `_ext_id`, `_ext_display_name`, `_ext_priority`, `_ext_subscription_ids`, `_ext_log_handle`, `_ext_log_fn`, `_ext_init_log_fn`, `_ext_log_named_fn`, `_ext_info` — the core populates these per-extension so `log()` and other routing end up in the right place |
 | Runtime offsets | `offsets` — pre-computed version-dependent values (read via `x4n::offsets()`) |
 | Settings | `get_setting_bool/number/string` and `set_setting_bool/number/string` — per-extension user settings (wrapped by `x4n::settings`) |
+| Save data | `save_set/get/remove/clear` and `save_ready` — per-extension values stored in the savegame, readable from `on_save_data_ready` on; wrapped by `x4n::save` |
 | Reserved | `_reserved[N]` trailing slots for future additions without breaking ABI |
 
 Everything prefixed with `_` is framework-managed. Extensions read through the `x4n::` wrappers; the C ABI is only meant to be stable, not ergonomic.
@@ -62,7 +63,7 @@ Everything prefixed with `_` is framework-managed. Extensions read through the `
 | Extension crashes game | SEH wrapping + auto-disable of crashing extensions |
 | LuaJIT state corruption | Minimize direct `lua_State` access; prefer event-based communication |
 | Online features disabled | Already happens with Protected UI Mode off; documented clearly |
-| Save corruption | Never write to save data from native code; use Lua/MD bridge or stash for session data |
+| Save corruption | Store per-game values through `x4n::save`: the game writes and reads them itself, as a savegame variable of the X4Native UI addon, and X4Native encodes every key and value so the save stays loadable. Never write a save file directly. Use stash for session data |
 | Malicious extensions | Clear documentation that extensions run with full process access |
 
 ---

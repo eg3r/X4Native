@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<content version="900" id="x4native_save_data" name="X4Native Save Data" description="Sample native extension: values stored in the savegame." author="eg3r" date="2026-11-25" save="0" enabled="1">
+  <dependency id="x4native" optional="false" />
+  <text language="44" description="Sample native extension: values stored in the savegame." name="X4Native Save Data"/>
+</content>

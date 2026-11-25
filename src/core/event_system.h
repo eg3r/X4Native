@@ -26,6 +26,8 @@ public:
     static int subscribe(const char* event_name, EventCallback callback, void* userdata = nullptr);
     static void unsubscribe(int id);
     static void fire(const char* event_name, void* data = nullptr);
+    // Like fire, but only for the subscriptions in `ids` (one extension's).
+    static void fire_to(const char* event_name, const std::vector<int>& ids, void* data = nullptr);
 
     // MD event pub/sub (O(1) by type_id)
     static constexpr uint32_t MAX_MD_TYPE = 600;

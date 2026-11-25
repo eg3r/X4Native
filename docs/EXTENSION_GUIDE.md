@@ -91,6 +91,7 @@ X4N_SHUTDOWN {
 #include <x4_md_events.h>   // x4n::md::on_*_before/after (typed MD event subscriptions)
 #include <x4n_log.h>         // x4n::log::info/warn/error/debug
 #include <x4n_stash.h>       // x4n::stash::set/get (survives /reloadui)
+#include <x4n_save.h>        // x4n::save::set/get (stored in the savegame)
 #include <x4n_hooks.h>       // x4n::hook::before/after/remove
 #include <x4n_settings.h>    // x4n::settings::get_*/set_*, on_setting_changed
 
@@ -148,6 +149,7 @@ All API functions live in the `x4n::` namespace. Include `<x4native.h>` for ever
 | `on_game_loaded` | Game world is initialized and safe to call game functions. Gamestart MD cues may not have run yet. |
 | `on_game_started` | World fully initialized, all gamestart MD cues complete. Use when you need gamestart effects (e.g., known sectors, faction setup). |
 | `on_game_save` | Game is being saved |
+| `on_save_data_ready` | The `x4n::save` values of this game can be read and written. Fires after `on_game_loaded`; see [Save Data](#save-data-values-stored-in-the-savegame) |
 | `on_ui_reload` | Lua state rebuilt (after `/reloadui`) |
 | `on_frame_update` | Every UI frame tick |
 
@@ -545,6 +547,60 @@ x4n::stash::clear();  // only clears YOUR extension's keys
 | Namespace | Auto-scoped to extension name |
 | Thread safety | Mutex-protected in proxy |
 | Max size | Process memory (no artificial limit) |
+
+### Save Data (Values Stored in the Savegame)
+
+`x4n::save` is a key-value store per extension that is saved with the game. What you set is in the next save, and comes back when that save is loaded. Use it for the state of a game: flags, counters, names, small structs.
+
+```cpp
+#include <x4n_save.h>
+
+static void on_save_data_ready() {
+    // This game's values are in: restore your state here.
+    int64_t visits = x4n::save::get_int("visits", 0);
+    x4n::save::set_int("visits", visits + 1);
+}
+
+X4N_EXTENSION {
+    x4n::save::on_ready(on_save_data_ready);
+}
+
+// Anywhere after that:
+x4n::save::set_string("fleet_name", "Red Wing");
+x4n::save::set_bool("intro_seen", true);
+x4n::save::set_number("ratio", 0.25);
+bool seen = x4n::save::get_bool("intro_seen", false);   // fallback when not stored
+
+// Raw bytes
+MyState state = { ... };
+x4n::save::set("state", &state, sizeof(state));
+
+x4n::save::remove("visits");
+x4n::save::clear();   // only YOUR extension's values
+```
+
+**Read and write from `on_save_data_ready` on, not from `on_game_loaded`.** The game hands a loaded save's values back a moment after the world exists, so they are not there yet when `on_game_loaded` fires. `on_save_data_ready` fires:
+
+- after a save is loaded, once its values are in;
+- after a new game starts, with nothing stored;
+- after `/reloadui`, when your extension is initialised again, with the values unchanged.
+
+Before it fires, the getters return their fallback and the setters return `false`. `x4n::save::ready()` tells you which side you are on. An extension that is hot-reloaded on its own gets the event again right after its init.
+
+| Property | Value |
+|----------|-------|
+| Lifetime | The game the player is in; dropped when another game starts or loads |
+| Stored in | The savegame itself (the UI section), not a side file |
+| Survives | Save and load, `/reloadui`, extension and core hot-reload |
+| Scope | Your extension (`content.xml` id) |
+| In a save | From the next UI frame after you set a value |
+| Limits | Key 1 to 128 bytes, value up to 256 KiB, 2 MiB for all extensions together, counted as stored: a byte other than a letter, digit, `_`, `-` or `.` takes three |
+| Without your extension | A game saved without it keeps your values for when it is back |
+
+The typed helpers store text (`"1"`, `"42"`, `"0.25"`), so a save stays readable and works on every platform. Any bytes are allowed in keys and values. A setter returns `false` when a limit is hit, so check it for values that matter. For bulk data, keep using files.
+
+The store uses no hook and no per-build address, so it does not depend on X4Native having data for the game build that is running. How the game stores it is described in [rev/UI_SAVED_VARIABLES.md](rev/UI_SAVED_VARIABLES.md).
+
 ## Settings
 
 Extensions can declare **user-configurable settings** that appear in the vanilla X4 menu at **Settings → Extensions → select your extension → `…`**, directly under the built-in **Enabled** toggle. Values are persisted per-user at
@@ -643,7 +699,7 @@ Each extension controls its own autoreload independently via its `x4native.json`
 - **Never call game functions before `on_game_loaded`** — the game world isn't ready yet.
 - **All code runs on the UI thread** — no threading required, no thread safety concerns.
 - **Extensions are auto-cleaned on unload** — hooks and event subscriptions are removed automatically, but explicit cleanup in `X4N_SHUTDOWN` is recommended.
-- **Static variables are lost on reload** — Use `x4n::stash` (fast, in-memory, survives reload) or disk files (survives game exit) to preserve state.
+- **Static variables are lost on reload** — Use `x4n::stash` (fast, in-memory, survives reload), `x4n::save` (stored in the savegame) or disk files (survives game exit) to preserve state.
 - **Protected UI mode must be OFF** in game settings for native extensions to work.
 - **Game updates may break hooks** — function signatures or addresses can change between patches.
 
@@ -657,3 +713,4 @@ See the `examples/` folder for working extensions:
 | `event_test` | Event round-trips (C++→Lua→C++), frame updates, direct MD event subscriptions |
 | `hook_test` | Before/after hooks on a game function |
 | `lua_bridge` | Dynamic Lua→C++ event forwarding |
+| `save_data` | Values stored in the savegame: typed values, raw bytes, restoring state, commands from Lua or MD |

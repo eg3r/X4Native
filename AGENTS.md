@@ -64,7 +64,7 @@ extension/      — X4 extension payload (deployed to extensions/x4native/)
   md/           — Mission Director XML cues
   ui/           — Lua bootstrap (x4native.lua)
   t/            — Translations
-examples/       — Example extensions (hello, event_test, hook_test, lua_bridge)
+examples/       — Example extensions (hello, event_test, hook_test, lua_bridge, save_data)
 scripts/        — Tooling (update_references.ps1 + extract/generate scripts)
 docs/           — Consolidated docs (ARCHITECTURE, INTERNALS, GAME_API,
                   SDK_CONTRACT, RELEASE, EXTENSION_GUIDE)
@@ -127,11 +127,12 @@ When investigating game APIs, events, or behavior:
 - Protected UI mode must be **OFF** for `package.loadlib()` to work.
 - Lua files run before the game world initializes — never call game functions until `on_game_loaded` fires.
 - **Stash** (`x4n::stash`) provides in-memory state that survives `/reloadui` and extension hot-reload. Lost on game exit. Lives in the proxy DLL.
+- **Save data** (`x4n::save`) is stored in the savegame. The values live in the core and are mirrored in the Lua table `__X4NATIVE_SAVE`, which the game saves itself as a savegame variable of the UI addon; no hook is involved. A loaded save's values arrive after `on_game_loaded`, so extensions read them from `on_save_data_ready` on.
 
 ## Conventions
 
 - Extension SDK uses a C ABI with `X4NATIVE_EXPORT` macro — see `sdk/x4native_extension.h`
-- Event names use `on_` prefix: `on_game_loaded`, `on_game_saved`, `on_frame_update`
+- Event names use `on_` prefix: `on_game_loaded`, `on_game_saved`, `on_frame_update`, `on_save_data_ready`
 - All DLL exports use `core_init`/`core_shutdown` (core) or `luaopen_x4native` (proxy) naming
 - Config files use JSON (`x4native.json` per extension) with flat `"library"` key for the DLL path
 - Framework log: `<ext_root>/x4native.log` (truncated each run, keeps .1–.4 backups). Each extension also gets its own log at `<ext_folder>/<name>.log` (or `"logfile"` field from `x4native.json`)

@@ -14,6 +14,7 @@
 //   #include <x4n_events.h>         // x4n::on/off/raise/bridge_lua_event
 //   #include <x4n_log.h>            // x4n::log::info/warn/error/debug
 //   #include <x4n_stash.h>          // x4n::stash::set/get (survives /reloadui)
+//   #include <x4n_save.h>           // x4n::save::set/get (stored in the savegame)
 //   #include <x4n_hooks.h>          // x4n::hook::before/after/remove
 //   #include <x4n_settings.h>       // x4n::settings::get/set, on_setting_changed
 //
@@ -65,6 +66,7 @@
 #include "x4n_events.h"
 #include "x4n_log.h"
 #include "x4n_stash.h"
+#include "x4n_save.h"
 #include "x4n_hooks.h"
 #include "x4n_settings.h"
 

@@ -293,12 +293,39 @@ typedef struct X4NativeAPI {
                                  char*       out_buf,
                                  size_t      buf_size);
 
+    // Reserved, always NULL. An SDK build outside this repository (tag
+    // v9.0.0-611726-cvazer.1) has `savexml_register` in this slot; an extension
+    // built against it then sees that call as unavailable instead of reaching
+    // another function.
+    void*       _reserved_savexml_register;
+
+    // --- Save data (per extension, stored in the savegame). SDK wrapper in
+    //     x4n_save.h. Values are scoped to the calling extension and belong to
+    //     the game that is loaded; they can be read and written from the
+    //     `on_save_data_ready` event on. ---
+
+    // Stores a copy of `data` under `key`. Returns 1, or 0 while no game's
+    // values are loaded, for an empty or too long key, for a too large value,
+    // or when the store is full.
+    int         (*save_set)(const char* key, const void* data, uint32_t size,
+                            void* _api_ptr);
+    // Returns the stored bytes, or NULL. The bytes are followed by a NUL and
+    // stay valid until this extension changes the key or another game loads.
+    const void* (*save_get)(const char* key, uint32_t* out_size,
+                            void* _api_ptr);
+    // Removes one key. Returns 1 if it existed.
+    int         (*save_remove)(const char* key, void* _api_ptr);
+    // Removes every key of the calling extension.
+    void        (*save_clear)(void* _api_ptr);
+    // Returns 1 once the values of the current game can be read and written.
+    int         (*save_ready)(void);
+
     // Trailing ABI pad. New function pointers are added by decrementing this
     // count — extensions compiled against an older header still see a valid
     // struct layout for every field they know about. Grow this array (never
     // shrink it) when the runway gets low; shrinking would silently break
     // already-compiled extensions.
-    void* _reserved[14];
+    void* _reserved[8];
 } X4NativeAPI;
 
 // ---- Required exports from extension DLLs --------------------------------

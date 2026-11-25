@@ -5,5 +5,7 @@
     <file name="ui/x4n_game_data.lua" />
     <file name="ui/x4native.lua" />
     <file name="ui/x4n_settings_menu.lua" />
+    <!-- x4n::save: the game stores this Lua table in every save (see ui/x4native.lua) -->
+    <savedvariable name="__X4NATIVE_SAVE" storage="savegame" />
   </environment>
 </addon>

@@ -26,6 +26,7 @@
 --   MD → raise_lua_event("x4native.universe_ready")  → RegisterEvent → DLL raise_event("on_universe_ready")
 --   MD → raise_lua_event("x4native.game_saved")     → RegisterEvent → DLL raise_event("on_game_save")
 --   Per-frame → SetScript("onUpdate") → DLL raise_event("on_frame_update")
+--   Save data → the values of a game are in → DLL raise_event("on_save_data_ready")
 --   UI reload → Lua file re-executes, DLL receives on_ui_reload + fresh lua_State*
 
 -- FFI: access to game C functions (IsPlayerValid, GetPlayerID, etc.)
@@ -36,6 +37,10 @@ pcall(ffi.cdef, [[
     typedef uint64_t UniverseID;
     bool IsPlayerValid(void);
     UniverseID GetPlayerID(void);
+]])
+
+pcall(ffi.cdef, [[
+    bool IsNewGame(void);
 ]])
 
 local x4native_api = nil
@@ -58,6 +63,196 @@ local function bridge_forward_lua_event(lua_event_name, cpp_event_name)
     end
     RegisterEvent(lua_event_name, handler)
     forwarded_events[lua_event_name] = handler
+end
+
+-- ============================================================
+-- Save data (x4n::save)
+-- ============================================================
+-- Extensions store values that belong in the savegame through the core. The
+-- core's values are mirrored in the table below, which ui.xml declares as a
+-- savegame variable: the game writes it into every save and puts it back when
+-- that save is loaded. Keys and values are strings in the core's encoding;
+-- nothing here interprets them.
+--
+--   __X4NATIVE_SAVE = { format = 1, ext = { [extension] = { [key] = value } } }
+--
+-- A Lua state starts in one of three ways:
+--   a save is loaded   The core dropped its values. The game restores the
+--                      table some frames after the player exists and fires
+--                      "addonLoaded"; the core then takes its values from it.
+--   a new game starts  Nothing is restored, the store starts empty.
+--   /reloadui          The core kept its values and they are written into the
+--                      new Lua state. The game also puts its copy of the table
+--                      back; the core's values go on top of it.
+-- Extensions get "on_save_data_ready" once the values can be read.
+local SAVE_GLOBAL = "__X4NATIVE_SAVE"
+local SAVE_FORMAT = 1
+-- A loaded save's table is back before the MD cue for the generated universe
+-- fires. Should "addonLoaded" never come, the store takes what is there this
+-- many seconds after that cue, or, without the cue, after the player is valid.
+local SAVE_RESTORE_GRACE = 10
+local SAVE_RESTORE_TIMEOUT = 180
+
+local save_supported = false  -- proxy and core both have the save store
+local save_reloaded = false   -- this Lua state began with /reloadui and the core kept its values
+local save_ready = false      -- the core holds this game's values
+local save_root = nil         -- the table the core's values are mirrored in
+local save_waiting = false    -- a save is loading and its table is not back yet
+local save_deadline = nil     -- when to stop waiting for "addonLoaded"
+
+-- The lookup of a C function fails when the game lacks the export, so it
+-- happens inside the protected call.
+local function save_player_exists()
+    local ok, pid = pcall(function() return C.GetPlayerID() end)
+    return ok and pid ~= nil and tonumber(pid) ~= 0
+end
+
+-- Runs before the extensions are initialised: tells the core whether this Lua
+-- state continues a running game, so no extension ever reads another game's values.
+local function save_start()
+    if not x4native_api.save_reset then return end      -- proxy without the save store
+    local kept = x4native_api.save_reset(save_player_exists())
+    if kept == nil then return end                       -- core without the save store
+    save_supported = true
+    save_reloaded = kept
+end
+
+-- The core takes its values from `root`, the table of a loaded save, or starts
+-- empty. Returns false for a table this version must not touch.
+local function save_adopt(root)
+    if type(root) ~= "table" then root = nil end
+    if root and type(root.format) == "number" and root.format > SAVE_FORMAT then
+        -- Written by a later X4Native. Leave it as it is, so nothing in it is lost.
+        x4native_api.log(2, "Save data: this savegame's values are in format " .. tostring(root.format)
+            .. ", this X4Native reads format " .. SAVE_FORMAT .. "; save data is off for this game")
+        save_supported = false
+        save_waiting = false
+        return false
+    end
+    x4native_api.save_import_begin()
+    local ext_table = root and root.ext
+    if type(ext_table) == "table" then
+        for ext, block in pairs(ext_table) do
+            if type(ext) == "string" and type(block) == "table" then
+                for key, value in pairs(block) do
+                    if type(key) == "string" and type(value) == "string" then
+                        x4native_api.save_import_entry(ext, key, value)
+                    end
+                end
+            end
+        end
+    end
+    x4native_api.save_import_end()
+    save_root = root
+    return true
+end
+
+local function save_announce(source)
+    save_ready = true
+    save_waiting = false
+    x4native_api.log(1, "Save data ready (" .. source .. ")")
+    x4native_api.raise_event("on_save_data_ready")
+end
+
+-- Writes what changed in the core into the table.
+local function save_sync()
+    if not save_ready then return end
+    local root = rawget(_G, SAVE_GLOBAL)
+    local rewrite = false
+    if root ~= save_root then
+        if type(root) ~= "table" then
+            -- Gone or overwritten: put ours back.
+            root = save_root
+            rawset(_G, SAVE_GLOBAL, root)
+        elseif save_reloaded then
+            -- /reloadui: the game put its copy back. The core's values go on top.
+            save_root = root
+            rewrite = true
+        else
+            -- The game restored a save's table after the store was declared ready.
+            if save_adopt(root) then save_announce("late restore") end
+            return
+        end
+    end
+
+    -- Nothing to do in most frames: the core then returns nothing.
+    local changes, full = x4native_api.save_take_changes(rewrite)
+    if not changes then return end
+    if root == nil then
+        if #changes == 0 then return end   -- nothing stored: leave the save without a table
+        root = { format = SAVE_FORMAT }
+        rawset(_G, SAVE_GLOBAL, root)
+        save_root = root
+    end
+    local ext_table = root.ext
+    if full or type(ext_table) ~= "table" then
+        ext_table = {}
+        root.ext = ext_table
+    end
+    for i = 1, #changes, 3 do
+        local ext, key, value = changes[i], changes[i + 1], changes[i + 2]
+        local block = ext_table[ext]
+        if value then
+            if type(block) ~= "table" then
+                block = {}
+                ext_table[ext] = block
+            end
+            block[key] = value
+        elseif type(block) == "table" then
+            block[key] = nil
+            if next(block) == nil then ext_table[ext] = nil end
+        end
+    end
+end
+
+-- The game world exists (on_game_loaded was raised). Extensions get exactly one
+-- "on_save_data_ready" per Lua state with a game in it, whichever way it began.
+local function save_game_loaded()
+    if not save_supported or save_ready then return end
+    if save_reloaded then
+        -- /reloadui shut down and re-initialised every extension, so each one needs
+        -- the signal again to restore its state. The values never left the core.
+        save_announce("/reloadui")
+        return
+    end
+    local ok, new_game = pcall(function() return C.IsNewGame() end)
+    if ok and new_game then
+        -- A new game has nothing saved: the store starts empty and is ready at once.
+        save_adopt(nil)
+        save_announce("new game")
+    else
+        -- A loaded save: "addonLoaded" follows once the game has restored the table.
+        save_waiting = true
+    end
+end
+
+-- The game restored the savegame variables: after a load, and after /reloadui.
+local function save_restored()
+    if not save_supported or not save_player_exists() then return end   -- also fires in the start menu
+    if save_reloaded then
+        save_sync()
+    elseif save_adopt(rawget(_G, SAVE_GLOBAL)) then
+        save_announce("savegame")
+    end
+end
+
+-- The MD cue for the generated universe fired: the load is over.
+local function save_universe_ready()
+    if save_waiting then save_deadline = getElapsedTime() + SAVE_RESTORE_GRACE end
+end
+
+local function save_tick()
+    if save_ready then
+        save_sync()
+    elseif save_waiting then
+        -- Should "addonLoaded" never come, take what is there once the load is over.
+        if not save_deadline then
+            local ok, valid = pcall(function() return C.IsPlayerValid() end)
+            if ok and valid then save_deadline = getElapsedTime() + SAVE_RESTORE_TIMEOUT end
+        elseif getElapsedTime() > save_deadline then
+            if save_adopt(rawget(_G, SAVE_GLOBAL)) then save_announce("no restore signal") end
+        end
+    end
 end
 
 -- ============================================================
@@ -94,6 +289,9 @@ local function load_dll()
     -- Expose to other X4Native UI files (e.g. x4n_settings_menu.lua).
     -- Single well-known global; consumers should treat it as read-only.
     _G.__X4NATIVE_API = x4native_api
+
+    -- Before the extensions initialise: drop or keep the save data of the previous Lua state
+    save_start()
 
     -- Discover and load extension DLLs (calls x4native_init on each)
     x4native_api.discover_extensions()
@@ -143,6 +341,7 @@ if x4native_api then
         universe_ready_fired = true
         x4native_api.log(1, "on_universe_ready triggered via " .. source)
         x4native_api.raise_event("on_universe_ready")
+        save_universe_ready()
     end
 
     local function fire_game_loaded(source)
@@ -150,6 +349,7 @@ if x4native_api then
         game_loaded_fired = true
         x4native_api.log(1, "on_game_loaded triggered via " .. source)
         x4native_api.raise_event("on_game_loaded")
+        save_game_loaded()
     end
 
     -- Override the bridge handler for game_loaded to use the guard
@@ -200,6 +400,7 @@ if x4native_api then
             poll_for_player()
         end
         x4native_api.raise_event("on_frame_update", nil)
+        save_tick()
 
         -- Autoreload: check every ~60 frames (~1s at 60fps)
         -- Only present in debug builds (should_autoreload is nil in release)
@@ -226,6 +427,9 @@ if x4native_api then
             x4native_api.log(2, "IsPlayerValid not available: " .. tostring(imm_result) .. " — relying on MD cue")
         end
     end
+
+    -- The game fires this after it has restored the savegame variables
+    RegisterEvent("addonLoaded", save_restored)
 
     -- Always register the per-frame handler
     SetScript("onUpdate", on_frame_update)

@@ -14,6 +14,7 @@
 #include "extension_manager.h"
 #include "game_api.h"
 #include "hook_manager.h"
+#include "save_store.h"
 #include "settings_manager.h"
 #include "version.h"
 #include "x4native_defs.h"
@@ -453,6 +454,9 @@ static void impl_prepare_reload() {
     x4n::Logger::info("Preparing for core hot-reload...");
     x4n::EventSystem::fire("on_before_reload");
     x4n::ExtensionManager::shutdown();
+    // After the extensions have shut down, so values they stored on the way out
+    // are carried over to the next core as well.
+    x4n::SaveStore::stash_snapshot(g_stash_set);
     remove_md_event_hook();
     remove_radar_visibility_hook();
     remove_frame_tick_hook();
@@ -564,6 +568,8 @@ static int core_init_impl(CoreInitContext* ctx) {
     g_stash_get    = ctx->stash_get;
     g_stash_remove = ctx->stash_remove;
     g_stash_clear  = ctx->stash_clear;
+    // Save data a previous core handed over before it was unloaded.
+    x4n::SaveStore::stash_restore(g_stash_get, g_stash_remove);
     x4n::ExtensionManager::init(g_ext_root, g_game_version,
                                 g_raise_lua_event, g_register_lua_bridge,
                                 g_stash_set, g_stash_get,
@@ -622,6 +628,64 @@ void core_shutdown() {
     } catch (...) {
         report_boundary_exception("core_shutdown", nullptr);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Save data — the save store as the proxy calls it (see CoreSaveApi)
+// ---------------------------------------------------------------------------
+// Reached through its own export instead of CoreDispatch, so a proxy and a
+// core of different versions never write into each other's structs.
+
+template <typename Fn, typename Result>
+static Result save_guarded(const char* where, Result on_error, Fn&& fn) {
+    try {
+        return fn();
+    } catch (const std::exception& e) {
+        report_boundary_exception(where, e.what());
+    } catch (...) {
+        report_boundary_exception(where, nullptr);
+    }
+    return on_error;
+}
+
+static int save_api_reset(int game_active) {
+    return save_guarded("save reset", 0, [&] { return x4n::SaveStore::reset(game_active != 0) ? 1 : 0; });
+}
+
+static void save_api_import_begin() {
+    save_guarded("save import", 0, [] { x4n::SaveStore::import_begin(); return 0; });
+}
+
+static void save_api_import_entry(const char* ext, const char* key, const char* value) {
+    save_guarded("save import", 0, [&] { x4n::SaveStore::import_entry(ext, key, value); return 0; });
+}
+
+static void save_api_import_end() {
+    save_guarded("save import", 0, [] { x4n::SaveStore::import_end(); return 0; });
+}
+
+static int save_api_take_changes(int full, const SaveChangeC** out, int* out_full) {
+    if (out) *out = nullptr;
+    if (out_full) *out_full = 0;
+    return save_guarded("save take_changes", 0, [&] {
+        bool is_full = false;
+        const int count = x4n::SaveStore::take_changes(full != 0, out, &is_full);
+        if (out_full) *out_full = is_full ? 1 : 0;
+        return count;
+    });
+}
+
+extern "C" __declspec(dllexport)
+const CoreSaveApi* core_save_api() {
+    static const CoreSaveApi api = {
+        sizeof(CoreSaveApi),
+        save_api_reset,
+        save_api_import_begin,
+        save_api_import_entry,
+        save_api_import_end,
+        save_api_take_changes,
+    };
+    return &api;
 }
 
 // ---------------------------------------------------------------------------

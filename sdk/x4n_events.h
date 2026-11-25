@@ -4,7 +4,8 @@
 // Part of the X4Native SDK. Included by x4native.h.
 //
 // Usage:
-//   int id = x4n::on("on_game_loaded", [] { ... });   // save data ready, gamestart MD NOT yet fired
+//   int id = x4n::on("on_game_loaded", [] { ... });   // world exists, gamestart MD NOT yet fired
+//   x4n::on("on_save_data_ready", [] { ... });         // x4n::save values of this game can be read
 //   x4n::on("on_game_started", [] { ... });            // world fully ready, all gamestart MD cues done
 //   x4n::on("on_frame_update", [](const X4NativeFrameUpdate* f) { ... });
 //   x4n::off(id);

@@ -267,6 +267,7 @@ The core scans every subdirectory of `extensions/` for `x4native.json`, checks i
 | Discovery | Game start | Core scans `extensions/*/x4native.json` |
 | Init | Game start | `x4native_init(api)` — register events, hooks. Can read stash. No game calls yet. |
 | Game Loaded | Savegame loaded | `on_game_loaded` fires. Game functions safe. Gamestart MD cues may not have run yet. |
+| Save Data Ready | After `on_game_loaded` | `on_save_data_ready` fires. The `x4n::save` values of this game can be read and written. For a loaded save this is some frames later, once the game has restored them. |
 | Game Started | After gamestart cues | `on_game_started` fires. All gamestart MD cues complete (known flags, factions, etc.). |
 | Runtime | Every frame | `on_frame_update`, `on_game_save`, custom events. Stash read/write anytime. |
 | Shutdown | Game exit / save load | `x4native_shutdown()` — cleanup. Write state to stash here. |
