@@ -60,6 +60,11 @@ local function bridge_forward_lua_event(lua_event_name, cpp_event_name)
     forwarded_events[lua_event_name] = handler
 end
 
+-- The core asks for the save names notice (see x4native_main.xml); MD shows it.
+RegisterEvent("x4native.savexml_unavailable", function()
+    AddUITriggeredEvent("x4native", "savexml_unavailable")
+end)
+
 -- ============================================================
 -- Stage 1: Load the core DLL immediately at game start.
 -- Extensions get x4native_init() here — they register events

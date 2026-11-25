@@ -42,9 +42,12 @@
 //     game's, and skippable on load. Like a hook, what it writes is its own.
 //   See docs/rev/SAVE_XML.md sections 4 to 6.
 //
-// Fails when the running X4Native has no SaveXML name support, when its two
-// lookup hooks are not installed (for example on a build mismatch), or before
-// the game has built the SaveXML table. See docs/rev/SAVE_XML.md.
+// Fails when the running X4Native has no SaveXML name support, or when its two
+// lookup hooks are not installed (for example on a build mismatch). See
+// docs/rev/SAVE_XML.md.
+//
+// Never hard-code a game number such as 0x67 (<blacklist>): it is a position in
+// the game's table, which grows between builds. Use game_number at load.
 //
 // Thin handle: name pointer + number. No heap allocation. The name points at
 // the core's stored copy and lives as long as the core's table.
@@ -55,6 +58,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 namespace x4n { namespace savexml {
 
@@ -79,19 +83,10 @@ public:
 inline std::optional<SaveXmlTag> register_tag(const char* local_name) {
     auto* api = detail::g_api;
     if (!api || !api->savexml_register || !local_name) return std::nullopt;
-    const int32_t number = api->savexml_register(local_name, api);
-    if (!number) return std::nullopt;
-
-    // The core built the full name; the formatter answers it from the core's
-    // table, so the tag points at the stored copy rather than the caller's
-    // local name. A registration that succeeded has both hooks, so the
-    // fallback is only for a core that does not answer the formatter.
-    const char* full = local_name;
-    using FormatFn = const char* (*)(const int32_t*);
-    if (auto* format = reinterpret_cast<FormatFn>(::x4n::game_internal("LookupKeyName_FormatXMLName"))) {
-        if (const char* stored = format(&number); stored && *stored) full = stored;
-    }
-    return SaveXmlTag(full, number);
+    const char* stored = nullptr;
+    const int32_t number = api->savexml_register(local_name, api, &stored);
+    if (!number || !stored) return std::nullopt;
+    return SaveXmlTag(stored, number);
 }
 
 /// The game's own number for a name the game owns, or 0. Registers nothing.
@@ -99,6 +94,52 @@ inline int32_t game_number(const char* game_name) {
     auto* api = detail::g_api;
     if (!api || !api->savexml_lookup || !game_name) return 0;
     return api->savexml_lookup(game_name);
+}
+
+// ---------------------------------------------------------------------------
+// Nodes. The core keeps the node layout; build and read nodes through these
+// calls. A node from create_node belongs to the game once appended to one of
+// the game's nodes.
+// ---------------------------------------------------------------------------
+
+/// A new element node, or null.
+inline void* create_node(int32_t element) {
+    auto* api = detail::g_api;
+    return api && api->savexml_create_node ? api->savexml_create_node(element) : nullptr;
+}
+
+/// Sets or replaces an attribute. False when it cannot be set; a value over
+/// 10,000,000 bytes, the most a save can carry, is refused and logged.
+inline bool set_attribute(void* node, int32_t attribute, const char* value) {
+    auto* api = detail::g_api;
+    return api && api->savexml_set_attribute && api->savexml_set_attribute(node, attribute, value, api) != 0;
+}
+
+/// Appends `child` to `parent`'s children.
+inline bool append_child(void* parent, void* child) {
+    auto* api = detail::g_api;
+    return api && api->savexml_append_child && api->savexml_append_child(parent, child) != 0;
+}
+
+/// The attribute's value, owned by the node, or null.
+inline const char* get_attribute(const void* node, int32_t attribute) {
+    auto* api = detail::g_api;
+    return api && api->savexml_get_attribute ? api->savexml_get_attribute(node, attribute) : nullptr;
+}
+
+/// The node's element number; 0 for a text node or null.
+inline int32_t element(const void* node) {
+    auto* api = detail::g_api;
+    return api && api->savexml_node_element ? api->savexml_node_element(node) : 0;
+}
+
+/// The node's children, in order.
+inline std::vector<void*> children(const void* node) {
+    auto* api = detail::g_api;
+    if (!api || !api->savexml_node_children) return {};
+    std::vector<void*> out(api->savexml_node_children(node, nullptr, 0));
+    if (!out.empty()) out.resize(api->savexml_node_children(node, out.data(), out.size()));
+    return out;
 }
 
 }} // namespace x4n::savexml

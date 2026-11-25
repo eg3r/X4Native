@@ -101,7 +101,9 @@ void SaveXml::log_line(const std::string& line) {
     if (sink) sink(line.c_str());
 }
 
-int32_t SaveXml::register_name(const void* ns, const char* ext_id, const char* local_name) {
+int32_t SaveXml::register_name(const void* ns, const char* ext_id, const char* local_name,
+                               const char** out_name) {
+    if (out_name) *out_name = nullptr;
     if (!attached()) return 0;
 
     if (!ext_id || !*ext_id) {
@@ -143,7 +145,11 @@ int32_t SaveXml::register_name(const void* ns, const char* ext_id, const char* l
     const Table* old = s_table.load(std::memory_order_acquire);
     if (old) {
         const auto found = old->numbers.find(full);
-        if (found != old->numbers.end()) return found->second;
+        if (found != old->numbers.end()) {
+            const auto index = static_cast<size_t>(found->second - s_first_added.load(std::memory_order_relaxed));
+            if (out_name) *out_name = old->names[index].c_str();
+            return found->second;
+        }
     }
 
     int32_t first = s_first_added.load(std::memory_order_relaxed);
@@ -172,6 +178,7 @@ int32_t SaveXml::register_name(const void* ns, const char* ext_id, const char* l
     s_first_added.store(first, std::memory_order_release);
 
     log_line(std::string("SaveXML: ") + ext_id + " registered '" + full + "' = " + std::to_string(number));
+    if (out_name) *out_name = published->names.back().c_str();
     return number;
 }
 
@@ -205,7 +212,7 @@ const char* SaveXml::format_xml_name(const int32_t* id) {
     return s_format_original.load()(id);
 }
 
-int32_t SaveXml::lookup_name(const char* name, const void* context) {
+int32_t SaveXml::lookup_name(const char* name, const std::string* context) {
     if (name && carries_separator(name)) {
         const Table* table = s_table.load(std::memory_order_acquire);
         if (table) {

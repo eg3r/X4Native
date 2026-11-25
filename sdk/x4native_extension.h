@@ -298,19 +298,30 @@ typedef struct X4NativeAPI {
     // Registers `local_name` under the calling extension's id and returns the
     // number both SaveXML lookups answer for the stored `<id>.<local_name>`.
     // `_api_ptr` is the caller's X4NativeAPI, as for the settings calls; the id
-    // is the extension's content.xml id. Returns 0 when the name cannot be
-    // registered.
-    int32_t (*savexml_register)(const char* local_name, void* _api_ptr);
+    // is the extension's content.xml id. `out_name`, when not null, receives
+    // the stored name, owned by the core for its life. Returns 0, and null in
+    // `out_name`, when the name cannot be registered.
+    int32_t (*savexml_register)(const char* local_name, void* _api_ptr, const char** out_name);
 
     // The game's own number for `game_name`, or 0. Registers nothing.
     int32_t (*savexml_lookup)(const char* game_name);
+
+    // Save XML nodes. The core keeps the node layout; extensions build and read
+    // nodes through these calls only. A created node belongs to the game once
+    // appended to one of its nodes.
+    void*       (*savexml_create_node)(int32_t element);
+    int         (*savexml_set_attribute)(void* node, int32_t attribute, const char* value, void* _api_ptr);
+    int         (*savexml_append_child)(void* parent, void* child);
+    const char* (*savexml_get_attribute)(const void* node, int32_t attribute);
+    int32_t     (*savexml_node_element)(const void* node);
+    size_t      (*savexml_node_children)(const void* node, void** out, size_t capacity);
 
     // Trailing ABI pad. New function pointers are added by decrementing this
     // count — extensions compiled against an older header still see a valid
     // struct layout for every field they know about. Grow this array (never
     // shrink it) when the runway gets low; shrinking would silently break
     // already-compiled extensions.
-    void* _reserved[12];
+    void* _reserved[6];
 } X4NativeAPI;
 
 // ---- Required exports from extension DLLs --------------------------------

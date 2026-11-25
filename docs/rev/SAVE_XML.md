@@ -37,7 +37,7 @@ Both are the SaveXML instantiation of the game's `LookupKeyName` template. Every
 | Function | Address | Declaration | Used |
 |----------|---------|-------------|------|
 | `LookupKeyName_FormatXMLName` | `0x140122550` | `const char*(const int32_t* id)` | number to name, as a save is written |
-| `LookupKeyName_LookupName` | `0x140123690` | `int32_t(const char* name, const void* context)` | name to number, as a save file is parsed |
+| `LookupKeyName_LookupName` | `0x140123690` | `int32_t(const char* name, const std::string* context)` | name to number, as a save file is parsed; `context` is the source the error line names |
 
 - **FormatXMLName** binary-searches the entries by id. An unknown id logs `LookupKeyName::FormatXMLName(): The lookup ID %lld does not exist in '%s'` and returns the empty name.
 - **LookupName** returns 0 at once when the slot is null. Otherwise it calls the namespace's name lookup (`0x140123C20`), which logs nothing; on a 0 result it calls the error logger (`0x1400E6D00`), which logs `LookupKeyName::LookupName(): The key name "%s" is not recognized in lookup %s.%s%s`, and returns 0.
@@ -56,12 +56,14 @@ if (const auto tag = x4n::savexml::register_tag("my_element")) { /* build nodes 
 
 - **The core stores every name under the caller's extension id**, as `<extension id>.<local name>`. The caller is the `X4NativeAPI*` the extension was initialised with; its id is the `content.xml` id. An extension registers its local names and never writes or parses the separator.
 - **Registering always adds a prefixed name.** No registration returns a game number: `blacklist` registered by `my_mod` is stored as `my_mod.blacklist` and gets a number of its own.
-- **A game name is read, not registered.** `x4n::savexml::game_number("blacklist")` answers the game's own number and registers nothing. It reads the game's table only, and answers 0 for an unknown name, an empty name, or before the namespace exists.
+- **A game name is read, not registered.** `x4n::savexml::game_number("blacklist")` answers the game's own number and registers nothing. It reads the game's table only, and answers 0 for an unknown name or an empty name.
+- **Never hard-code a game number.** A number such as `0x67` (`<blacklist>`) is a position in the game's table, and the table grows between builds: from 1334 to 1338 names within v9.00. Look the number up with `game_number` at load.
 - **One table for every extension**, in the core. A name registered again by the same extension keeps its number; the same local name from two extensions gets two names and two numbers.
 - **A new name gets the next number above the game's highest.** Numbers are given out first come first served for the life of the core; they never reach the file, which holds names, so they may differ between sessions.
 - **The core hooks both lookups** with MinHook and answers an added name or number before the game's. Every name without the separator, and every number below the first added, goes to the game unchanged, without a lock or an allocation.
 - **An id or local name that is not a valid XML name is refused**, and so is one carrying the separator; the call returns 0 and the log names the id and the reason.
-- **Registration fails, returning no tag,** when the two hooks are not both installed (a missing RVA, or the build-mismatch safe mode) or before the game has built the namespace.
+- **Registration fails, returning no tag,** when the two hooks are not both installed: a missing RVA, or the build-mismatch safe mode. The core then logs it, and once the world is up shows the player a notice that extensions cannot keep their data in the save this session.
+- **Treat missing data as a first run.** A save may carry none of an extension's data: it was made before the extension was installed, while the extension was removed, or in a session without the hooks, whose next save drops what the loaded save carried. An extension that finds nothing starts as it would in a new game.
 - **Register at `x4native_init`.** A save's names are resolved while its file is parsed, before any list, station or other object is read from the nodes; a name registered later is not recognized in that save. Extensions are initialised again on every save load, before the world loads (`docs/ARCHITECTURE.md`, "Save-Load Lifecycle"), and the table lives for the life of the core, so a name registered once is known to every later save.
 - **Each registration is logged with its owner**, and a load that holds data from an extension that is not loaded logs it once per name per load:
 
@@ -74,23 +76,41 @@ The calls are `X4NativeAPI::savexml_register` and `X4NativeAPI::savexml_lookup`,
 
 ---
 
-## 5. Building a node
+## 5. Building and reading a node
 
-An extension adds a node the way the game's own writers do, through the game's calls, so the game frees it with the rest of the save's nodes. The list writer (`BlacklistData_Export`, `0x1403725E0`) is the model.
+An extension builds and reads nodes through `x4n::savexml`, and the core builds them the way the game's own writers do, so the game frees a node with the rest of the save once it is appended to one of the game's nodes. The node layout is MSVC's layout of a small vector and a `std::string`, so it stays inside the core (`src/core/save_xml_layout.h`) and is not part of the SDK.
+
+| Call | Does |
+|------|------|
+| `create_node(element)` | a new element node, or null |
+| `set_attribute(node, attribute, value)` | sets or replaces an attribute |
+| `append_child(parent, child)` | appends a child |
+| `get_attribute(node, attribute)` | the attribute's value, owned by the node, or null |
+| `element(node)` | the element number; 0 for a text node |
+| `children(node)` | the children, in order |
+
+**A value is at most 10,000,000 bytes.** That is libxml2's `XML_MAX_TEXT_LENGTH`, and the game's save reader is created without the option that lifts it, so a longer value would break the load. `set_attribute` refuses one and logs the extension and the attribute; larger data is split across several attributes or child nodes by the extension.
+
+```cpp
+void* rules = x4n::savexml::create_node(rules_tag->number());
+x4n::savexml::set_attribute(rules, enabled_tag->number(), "1");
+x4n::savexml::append_child(list_node, rules);
+```
+
+A game writer that receives a node, such as the list writer `BlacklistData_Export` (`0x1403725E0`) with each `<blacklist>`, is where an extension hooks to add its own child; the list writer writes a flag attribute such as `whitelist` as `"1"`, and only when it is on, and a faction set as the faction ids joined by a space.
+
+### The layout the core builds
 
 | Field | Offset | Content |
 |-------|--------|---------|
-| flags | `+0x00` (`X4_XML_NODE_OFFSET_FLAGS`) | `uint8`, `3` for an element (`X4_XML_NODE_FLAG_ELEMENT`); `8` marks a text node (`X4_XML_NODE_FLAG_TEXT`) |
-| element | `+0x0C` (`X4_XML_NODE_OFFSET_ELEMENT`) | `int32`, the element's number |
-| attributes | `+0x18` (`X4_XML_NODE_OFFSET_ATTRIBUTES`) | small vector of 0x28-byte entries (`X4_XML_ATTRIBUTE_SIZE`) `{int32 id; std::string value at +8}` (`X4_XML_ATTRIBUTE_OFFSET_ID`, `X4_XML_ATTRIBUTE_OFFSET_VALUE`): 4 inline (`X4_XML_NODE_INLINE_CAPACITY`), capacity `+0xB8`, count `+0xC0` (`X4_XML_NODE_OFFSET_ATTRIBUTE_CAPACITY`, `X4_XML_NODE_OFFSET_ATTRIBUTE_COUNT`) |
-| children | `+0xC8` (`X4_XML_NODE_OFFSET_CHILDREN`) | small vector of node pointers: 4 inline, capacity `+0xE8`, count `+0xF0` (`X4_XML_NODE_OFFSET_CHILD_CAPACITY`, `X4_XML_NODE_OFFSET_CHILD_COUNT`) |
+| flags | `+0x00` | `uint8`, `3` for an element; `8` marks a text node |
+| element | `+0x0C` | `int32`, the element's number |
+| attributes | `+0x18` | small vector of 0x28-byte entries `{int32 id; std::string value at +8}`: 4 inline, capacity `+0xB8`, count `+0xC0` |
+| children | `+0xC8` | small vector of node pointers: 4 inline, capacity `+0xE8`, count `+0xF0` |
 
-- **Allocate** 0xF8 bytes (`X4_XML_NODE_SIZE`) through `GameAlloc` with alignment 0x10 (`X4_XML_NODE_ALIGNMENT`).
-- **Construct** as the writer's inlined constructor does: `+0x02` (`uint16`, `X4_XML_NODE_OFFSET_SOURCE_LINE`) and `+0x04` (`int32`, `X4_XML_NODE_OFFSET_SOURCE_COLUMN`) set to -1 (`X4_XML_NODE_NO_SOURCE_LINE`, `X4_XML_NODE_NO_SOURCE_COLUMN`), `+0x08` (`uint32`, `X4_XML_NODE_OFFSET_PREFIX`) and `+0x10` (`X4_XML_NODE_OFFSET_TEXT`) zeroed, both vectors' capacity 4 and count 0, flags 3, then the element number at `+0x0C`. The constructor zeroes `+0x08` with one 8-byte store that also clears `+0x0C`, so the element number is written after it; writing `+0x08` as 4 bytes leaves the order free.
-- **Set an attribute** with `XmlNode_SetAttribute(node, id, value)` (`0x140123700`).
-- **Append a child** with `XmlNodeVector_PushBack(parent + 0xC8, &child)` (`0x1400CB8C0`).
-
-The writer writes a flag attribute such as `whitelist` as `"1"`, and only when it is on, and a faction set as the faction ids joined by a space.
+- **Allocated** as 0xF8 bytes through `GameAlloc` with alignment 0x10.
+- **Constructed** as the list writer's inlined constructor does: `+0x02` (`uint16`) and `+0x04` (`int32`) set to -1, `+0x08` and `+0x10` zeroed, both vectors' capacity 4 and count 0, flags 3, then the element number at `+0x0C`. The constructor zeroes `+0x08` with one 8-byte store that also clears `+0x0C`, so the element number is written after it.
+- **Attributes** are set with `XmlNode_SetAttribute(node, id, value)` (`0x140123700`), **children** appended with `XmlNodeVector_PushBack(parent + 0xC8, &child)` (`0x1400CB8C0`).
 
 ---
 

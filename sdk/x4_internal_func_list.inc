@@ -320,7 +320,8 @@ X4_FUNC(const char*, LookupKeyName_FormatXMLName, (const int32_t* id))
 // LookupKeyName_LookupName — the SaveXML id of a name, used as a save is read. Reads
 // the namespace from the same slot; returns 0 without a lookup when it is null. An
 // unknown name is passed with `context` to the error logger ("The key name ... is not
-// recognized") and returns 0.
+// recognized") and returns 0. `context` is a const std::string* (MSVC ABI), the source
+// the error line names; declared void* for C compat.
 // Verified: v9.00 build 900-611726, RVA 0x00123690. Per-build RVA from version_db.
 X4_FUNC(int32_t, LookupKeyName_LookupName, (const char* name, const void* context))
 

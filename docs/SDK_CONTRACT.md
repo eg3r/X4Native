@@ -63,7 +63,7 @@ Everything prefixed with `_` is framework-managed. Extensions read through the `
 | Extension crashes game | SEH wrapping + auto-disable of crashing extensions |
 | LuaJIT state corruption | Minimize direct `lua_State` access; prefer event-based communication |
 | Online features disabled | Already happens with Protected UI Mode off; documented clearly |
-| Save corruption | Native code adds save data only through `x4n::savexml`: its own prefixed elements and attributes, beside the game's, never changing or removing what the game wrote (docs/rev/SAVE_XML.md). Otherwise use the Lua/MD bridge, or stash for session data |
+| Save corruption | Native code adds save data only through `x4n::savexml`: its own prefixed elements and attributes, beside the game's, never changing or removing what the game wrote, and treats a save without its data as a first run (docs/rev/SAVE_XML.md). Otherwise use the Lua/MD bridge, or stash for session data |
 | Malicious extensions | Clear documentation that extensions run with full process access |
 
 ---

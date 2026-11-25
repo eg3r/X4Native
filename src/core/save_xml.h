@@ -45,7 +45,7 @@ class SaveXml {
 public:
     /// The game's two lookups, and their originals as MinHook returns them.
     using FormatXMLNameFn = const char* (*)(const int32_t* id);
-    using LookupNameFn    = int32_t (*)(const char* name, const void* context);
+    using LookupNameFn    = int32_t (*)(const char* name, const std::string* context);
 
     /// Receives the core's log lines. Null leaves them unsaid.
     using LogFn = void (*)(const char* line);
@@ -67,12 +67,14 @@ public:
     static void set_log(LogFn log);
 
     /// Registers `local_name` under `ext_id` and returns the number of the
-    /// stored `<ext_id><separator><local_name>`. `ns` is the SaveXML namespace
+    /// stored `<ext_id><separator><local_name>`; `out_name`, when given, is set
+    /// to the stored name, which lives as long as the core. `ns` is the SaveXML namespace
     /// object; without it nothing is registered, because the game's own numbers
     /// could not be read. Returns 0 while detached, for a null or invalid id or
     /// local name, for an id or local name carrying the separator, or without
     /// the namespace.
-    static int32_t register_name(const void* ns, const char* ext_id, const char* local_name);
+    static int32_t register_name(const void* ns, const char* ext_id, const char* local_name,
+                                 const char** out_name = nullptr);
 
     /// The game's own number for a game name, or 0. Reads the game's table only
     /// and registers nothing: a name an extension added is not a game name.
@@ -85,7 +87,7 @@ public:
     /// The detours, with the game's own signatures: an added number or name is
     /// answered from the table; any other call goes to the original unchanged.
     static const char* format_xml_name(const int32_t* id);
-    static int32_t lookup_name(const char* name, const void* context);
+    static int32_t lookup_name(const char* name, const std::string* context);
 
 private:
     /// One immutable set of added names, published whole. `names` is indexed by

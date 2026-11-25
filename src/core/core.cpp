@@ -15,6 +15,7 @@
 #include "game_api.h"
 #include "hook_manager.h"
 #include "save_xml.h"
+#include "save_xml_node.h"
 #include "settings_manager.h"
 #include "version.h"
 #include "x4native_defs.h"
@@ -152,22 +153,6 @@ X4GameOffsets s_offsets = {
 
     // --- Save XML ---
     .savexml_namespace         = nullptr,
-    .xml_node_size             = X4_XML_NODE_SIZE,
-    .xml_node_element          = X4_XML_NODE_OFFSET_ELEMENT,
-    .xml_node_attributes       = X4_XML_NODE_OFFSET_ATTRIBUTES,
-    .xml_node_children         = X4_XML_NODE_OFFSET_CHILDREN,
-    .xml_node_flags            = X4_XML_NODE_OFFSET_FLAGS,
-    .xml_node_source_line      = X4_XML_NODE_OFFSET_SOURCE_LINE,
-    .xml_node_source_column    = X4_XML_NODE_OFFSET_SOURCE_COLUMN,
-    .xml_node_prefix           = X4_XML_NODE_OFFSET_PREFIX,
-    .xml_node_text             = X4_XML_NODE_OFFSET_TEXT,
-    .xml_node_attribute_capacity = X4_XML_NODE_OFFSET_ATTRIBUTE_CAPACITY,
-    .xml_node_attribute_count  = X4_XML_NODE_OFFSET_ATTRIBUTE_COUNT,
-    .xml_node_child_capacity   = X4_XML_NODE_OFFSET_CHILD_CAPACITY,
-    .xml_node_child_count      = X4_XML_NODE_OFFSET_CHILD_COUNT,
-    .xml_attribute_size        = X4_XML_ATTRIBUTE_SIZE,
-    .xml_attribute_id          = X4_XML_ATTRIBUTE_OFFSET_ID,
-    .xml_attribute_value       = X4_XML_ATTRIBUTE_OFFSET_VALUE,
 };
 
 static std::string g_ext_root;
@@ -453,6 +438,15 @@ static const char* const kSaveXmlLookups[] = {"LookupKeyName_FormatXMLName", "Lo
 // the core hands it its sink here.
 static void savexml_log(const char* line) { x4n::Logger::info("{}", line ? line : ""); }
 
+// Without the hooks no extension can keep data in the save, and the next save
+// drops what the loaded one carried for them. Once the world is up, the player is
+// told through x4native.lua and the MD cue x4native_SaveXmlUnavailable.
+static int s_savexml_notice_subscription = 0;
+
+static void savexml_notice(const char*, void*, void*) {
+    if (!x4n::SaveXml::attached() && g_raise_lua_event) g_raise_lua_event("x4native.savexml_unavailable", "");
+}
+
 // Creates the hook without enabling it; the target, or null on failure.
 static void* create_savexml_hook(const char* name, void* detour, void** original) {
     void* target = x4n::GameAPI::get_internal(name);
@@ -486,6 +480,7 @@ static void remove_savexml_hooks() {
 // them.
 static bool install_savexml_hooks() {
     x4n::SaveXml::set_log(&savexml_log);
+    x4n::SaveXmlNode::attach(x4n::GameAPI::table(), &savexml_log);
 
     x4n::SaveXml::FormatXMLNameFn format = nullptr;
     x4n::SaveXml::LookupNameFn    lookup = nullptr;
@@ -550,6 +545,7 @@ static void impl_log(int level, const char* message) {
 static void impl_prepare_reload() {
     x4n::Logger::info("Preparing for core hot-reload...");
     x4n::EventSystem::fire("on_before_reload");
+    x4n::EventSystem::unsubscribe(s_savexml_notice_subscription);
     x4n::ExtensionManager::shutdown();
     remove_md_event_hook();
     remove_radar_visibility_hook();
@@ -671,6 +667,12 @@ static int core_init_impl(CoreInitContext* ctx) {
                                 g_raise_lua_event, g_register_lua_bridge,
                                 g_stash_set, g_stash_get,
                                 g_stash_remove, g_stash_clear);
+
+    if (!x4n::SaveXml::attached()) {
+        x4n::Logger::error("SaveXML: the save name hooks are not installed; extensions cannot keep data "
+                           "in the save this session, and saving drops what a loaded save carries for them");
+    }
+    s_savexml_notice_subscription = x4n::EventSystem::subscribe("on_universe_ready", &savexml_notice);
 
     // 6. Fill the proxy's dispatch table
     ctx->dispatch->discover_extensions    = impl_discover_extensions;

@@ -92,6 +92,7 @@ add_library(x4native_core SHARED
     core/game_api.cpp
     core/hook_manager.cpp
     core/save_xml.cpp
+    core/save_xml_node.cpp
     core/settings_manager.cpp
     core/version.cpp
 )
