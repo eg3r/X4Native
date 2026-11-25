@@ -1,0 +1,6 @@
+{
+    "library": "native\\x4native_save_store.dll",
+    "priority": 100,
+    "min_api_version": 1,
+    "autoreload": true
+}

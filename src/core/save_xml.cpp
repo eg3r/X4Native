@@ -43,6 +43,9 @@ std::atomic<int32_t>                SaveXml::s_first_added{0};
 std::atomic<bool>                   SaveXml::s_attached{false};
 std::atomic<SaveXml::FormatXMLNameFn> SaveXml::s_format_original{nullptr};
 std::atomic<SaveXml::LookupNameFn>  SaveXml::s_lookup_original{nullptr};
+std::atomic<SaveXml::ReadFn>        SaveXml::s_skip_original{nullptr};
+std::atomic<SaveXml::ReadFn>        SaveXml::s_read_children{nullptr};
+std::atomic<uint32_t>               SaveXml::s_element_offset{0};
 std::atomic<SaveXml::LogFn>         SaveXml::s_log{nullptr};
 
 std::mutex                          SaveXml::s_miss_mutex;
@@ -81,6 +84,12 @@ void SaveXml::attach(FormatXMLNameFn format, LookupNameFn lookup) {
     s_format_original = format;
     s_lookup_original = lookup;
     s_attached = true;
+}
+
+void SaveXml::attach_reader(ReadFn skip, ReadFn read, uint32_t element_offset) {
+    s_element_offset = element_offset;
+    s_read_children = read;
+    s_skip_original = skip;
 }
 
 void SaveXml::detach() {
@@ -233,6 +242,21 @@ int32_t SaveXml::lookup_name(const char* name, const std::string* context) {
         return 0;
     }
     return s_lookup_original.load()(name, context);
+}
+
+void SaveXml::skip_children(void* node, void* reader) {
+    const int32_t first = s_first_added.load(std::memory_order_acquire);
+    if (node && first != 0) {
+        const int32_t element = *reinterpret_cast<const int32_t*>(
+            static_cast<const uint8_t*>(node) + s_element_offset.load(std::memory_order_relaxed));
+        const Table* table = s_table.load(std::memory_order_acquire);
+        const ReadFn read = s_read_children.load(std::memory_order_relaxed);
+        if (element >= first && table && read && static_cast<size_t>(element - first) < table->names.size()) {
+            read(node, reader);
+            return;
+        }
+    }
+    s_skip_original.load()(node, reader);
 }
 
 } // namespace x4n

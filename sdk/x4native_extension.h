@@ -118,6 +118,14 @@ typedef enum {
 // The struct contains both exported and internal (RE'd) functions.
 struct X4GameFunctions;
 
+// Value types of the save store (X4NativeAPI::save_set / save_get).
+enum {
+    X4N_SAVE_BOOL = 0,   // bool, passed and answered as int
+    X4N_SAVE_INT = 1,    // int64_t
+    X4N_SAVE_NUMBER = 2, // double
+    X4N_SAVE_STRING = 3, // NUL-terminated UTF-8
+};
+
 // ---- API context ---------------------------------------------------------
 // Passed to x4native_init(). Pointers remain valid until x4native_shutdown().
 typedef struct X4NativeAPI {
@@ -316,12 +324,22 @@ typedef struct X4NativeAPI {
     int32_t     (*savexml_node_element)(const void* node);
     size_t      (*savexml_node_children)(const void* node, void** out, size_t capacity);
 
+    // --- Save store. SDK wrappers in x4n_save.h. ---
+    // Values are stored under the calling extension's id in `<x4native.store>`.
+    // `type` is one of X4N_SAVE_*; `_api_ptr` is the caller's X4NativeAPI.
+    // save_set takes a pointer to the value (bool as int, int64_t, double, or a
+    // NUL-terminated string). save_get copies into `out`; for a string,
+    // `out_size` is the buffer's size in bytes. Both return 1 on success.
+    int (*save_set)(const char* key, int type, const void* value, void* _api_ptr);
+    int (*save_get)(const char* key, int type, void* out, uint32_t out_size, void* _api_ptr);
+    int (*save_remove)(const char* key, void* _api_ptr);
+
     // Trailing ABI pad. New function pointers are added by decrementing this
     // count — extensions compiled against an older header still see a valid
     // struct layout for every field they know about. Grow this array (never
     // shrink it) when the runway gets low; shrinking would silently break
     // already-compiled extensions.
-    void* _reserved[6];
+    void* _reserved[3];
 } X4NativeAPI;
 
 // ---- Required exports from extension DLLs --------------------------------

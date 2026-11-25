@@ -35,15 +35,19 @@
 //
 // Responsibility:
 //   - The core: a registered name has one number for every extension in the
-//     process, and both lookups answer it. Extensions share the numbers, so
-//     they are assigned in one place; extensions numbering names on their own
-//     would collide and read each other's data.
+//     process, both lookups answer it, and an element carrying it is read
+//     whole on load. Extensions share the numbers, so they are assigned in one
+//     place; extensions numbering names on their own would collide and read
+//     each other's data.
 //   - The extension: the nodes it builds are well-formed, written beside the
 //     game's, and skippable on load. Like a hook, what it writes is its own.
-//   See docs/rev/SAVE_XML.md sections 4 to 6.
+//   A save is written to and read from a stream: write a node with
+//   XmlNode_Construct, XmlNode_Write and XmlNode_Destroy after
+//   UniverseData_Export, and find it on the <universe> node after
+//   UniverseData_Import. See docs/rev/SAVE_XML.md sections 4 to 6.
 //
-// Fails when the running X4Native has no SaveXML name support, or when its two
-// lookup hooks are not installed (for example on a build mismatch). See
+// Fails when the running X4Native has no SaveXML name support, or when its three
+// SaveXML hooks are not installed (for example on a build mismatch). See
 // docs/rev/SAVE_XML.md.
 //
 // Never hard-code a game number such as 0x67 (<blacklist>): it is a position in

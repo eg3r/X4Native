@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mdscript name="X4Native_SaveStore"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:noNamespaceSchemaLocation="md.xsd">
+  <cues>
+
+    <!-- Every time a save is loaded, ask the extension to count the load. -->
+    <cue name="save_store_Loaded" instantiate="true">
+      <conditions>
+        <event_game_loaded />
+      </conditions>
+      <actions>
+        <debug_text text="'X4Native save_store: asking the extension for the load count'" filter="general"/>
+        <raise_lua_event name="'x4native_save_store.load'" />
+      </actions>
+    </cue>
+
+    <!-- The UI Lua file hands the stored count back as a UI triggered event. -->
+    <cue name="save_store_Answer" instantiate="true">
+      <conditions>
+        <event_ui_triggered screen="'x4native_save_store'" control="'loaded'" />
+      </conditions>
+      <actions>
+        <debug_text text="'X4Native save_store: the extension stored loads=' + $param" filter="general"/>
+      </actions>
+    </cue>
+
+  </cues>
+</mdscript>

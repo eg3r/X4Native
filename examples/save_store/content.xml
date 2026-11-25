@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<content version="900" id="x4native_save_store" name="X4Native Save Store" description="Sample extension using X4Native's save store." author="eg3r" date="2026-11-19" save="0" enabled="1">
+  <dependency id="x4native" optional="false" />
+  <text language="44" description="Sample extension using X4Native's save store." name="X4Native Save Store"/>
+</content>

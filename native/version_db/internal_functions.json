@@ -523,6 +523,35 @@
       },
       "900-611726": { "rva": "0x00371D20" }
     },
+    "UniverseData_Export": {
+      "_find_hints": {
+        "method": "structural",
+        "steps": [
+          "1. Find the function that constructs <blacklists> (0x68) as a local node with its second argument as the stream, calls BlacklistData_Export with the list registry and that node, then writes the node to the stream",
+          "2. Verify: it stores its second argument in its frame and reads [this+0x228] before constructing <parameters> (0x313); it returns al = 1 on success",
+          "3. Verify: its one caller opens the <universe> element (0x4E7) with XmlNode_Construct and open = 1, passes the universe object in rcx and the stream in rdx, and abandons the save when it returns 0"
+        ],
+        "verify_strings": [],
+        "byte_sig": "48 8B C4 48 89 50 10 48 89 48 08 55 53 56 57 41 54 41 55 41 56 41 57 48 8D A8 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 0F 29 70 A8 0F 29 78 98 44 0F 29 40 88 4C 8B E9 48 83 B9 28 02 00 00 00 0F 84 ?? ?? ?? ??",
+        "byte_sig_note": "First 67 bytes. Prologue homes rdx and rcx, pushes rbp/rbx/rsi/rdi/r12-r15, lea rbp,[rsp-N], sub rsp,M, saves xmm6-xmm8, then r13=rcx and cmp qword [rcx+0x228],0. Wildcarded: frame displacement, stack immediate, branch displacement. matches once in X4.exe v9.00 build 900-611726 (RVA 0x008DE190)."
+      },
+      "900-611726": { "rva": "0x008DE190" }
+    },
+    "UniverseData_Import": {
+      "_find_hints": {
+        "method": "structural",
+        "steps": [
+          "1. Find the function that walks its second argument's children and dispatches each by element id, its <blacklists> (0x68) case calling BlacklistData_Import",
+          "2. Verify: it homes r9, r8, rdx and rcx; r15=r9, r12=r8, rax=rdx, r13=rcx",
+          "3. Verify: it is called once per loaded <universe> node, with a fifth argument on the stack that it tests before each section",
+          "4. Verify: its loop reads each child with the call at 0x14058F5E0, pushes it onto the node, and skips an unknown one with XmlNode_SkipChildren"
+        ],
+        "verify_strings": [],
+        "byte_sig": "48 8B C4 4C 89 48 20 4C 89 40 18 48 89 50 10 48 89 48 08 55 53 56 57 41 54 41 55 41 56 41 57 48 8D A8 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 0F 29 70 A8 0F 29 78 98 44 0F 29 40 88 44 0F 29 88 78 FF FF FF 4D 8B F9 4D 8B E0 48 8B C2 4C 8B E9",
+        "byte_sig_note": "First 78 bytes. Prologue homes r9, r8, rdx and rcx, pushes rbp/rbx/rsi/rdi/r12-r15, lea rbp,[rsp-N], sub rsp,M, saves xmm6-xmm9, then r15=r9, r12=r8, rax=rdx, r13=rcx. Wildcarded: frame displacement, stack immediate. matches once in X4.exe v9.00 build 900-611726 (RVA 0x008DC5F0)."
+      },
+      "900-611726": { "rva": "0x008DC5F0" }
+    },
     "LookupKeyName_FormatXMLName": {
       "_find_hints": {
         "method": "string_search",
@@ -550,6 +579,74 @@
         "byte_sig_note": "First 33 bytes. Prologue, the load of the SaveXML namespace from its global slot and its null check. Wildcarded: RIP-relative displacement, branch displacement, stack immediate. matches 74 places in X4.exe v9.00 build 900-611726, one of them RVA 0x00123690: every lookup namespace's instantiation shares these bytes, each loading its own namespace, so the find hints identify this one."
       },
       "900-611726": { "rva": "0x00123690" }
+    },
+    "XmlNode_Construct": {
+      "_find_hints": {
+        "method": "structural",
+        "steps": [
+          "1. In the universe save writer (UniverseData_Export), find the call made with r8d=0x313 and rcx pointing at a local node",
+          "2. Verify: it sets the word at +0x02 and the dword at +0x04 to -1, clears +0x08 and +0x10, writes 4 to +0xB8 and +0xE8, and stores (r9b << 2) | 3 in the byte at +0x00",
+          "3. Verify: it stores r8d at +0x0C, and when bit 2 of the flags is set writes the start tag to the stream at [rdx+0x78]"
+        ],
+        "verify_strings": [],
+        "byte_sig": "48 89 5C 24 10 48 89 6C 24 18 48 89 4C 24 08 56 57 41 56 48 83 EC 30 41 8B E8",
+        "byte_sig_note": "First 26 bytes. Register homes, push rsi/rdi/r14, sub rsp,30h, mov ebp,r8d. No wildcards. matches once in X4.exe v9.00 build 900-611726 (RVA 0x004B6270)."
+      },
+      "900-611726": { "rva": "0x004B6270" }
+    },
+    "XmlNode_Write": {
+      "_find_hints": {
+        "method": "structural",
+        "steps": [
+          "1. In the universe save writer (UniverseData_Export), find the call made right after BlacklistData_Export with rcx = the <blacklists> node, rdx = the stream and r8b = 1",
+          "2. Verify: with r8b set it returns early for a node whose attribute count [+0xC0], child count [+0xF0] and text are all empty",
+          "3. Verify: it reads the stream's writer at [rdx+0x78] and returns al = 0 when the write fails"
+        ],
+        "verify_strings": [],
+        "byte_sig": "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 30 48 8B D9 45 84 C0 74 ?? 48 83 B9 C0 00 00 00 00",
+        "byte_sig_note": "First 31 bytes. Register homes, sub rsp,30h, mov rbx,rcx, test r8b,r8b and the attribute-count test. Wildcarded: branch displacement. matches once in X4.exe v9.00 build 900-611726 (RVA 0x0058F300)."
+      },
+      "900-611726": { "rva": "0x0058F300" }
+    },
+    "XmlNode_Destroy": {
+      "_find_hints": {
+        "method": "structural",
+        "steps": [
+          "1. In the universe save writer (UniverseData_Export), find the call made with rcx = a local node right after that node is written with XmlNode_Write",
+          "2. Verify: it frees the 0x20-byte text block at [rcx+0x10], destroys the child vector at +0xC8 (freeing its heap storage when the capacity at +0xE8 is not 4), and tail-jumps to destroy the attribute vector at +0x18"
+        ],
+        "verify_strings": [],
+        "byte_sig": "48 89 5C 24 08 57 48 83 EC 20 48 8B 79 10 48 8B D9 48 85 FF 74 ?? 48 8B CF",
+        "byte_sig_note": "First 25 bytes. Register home, push rdi, sub rsp,20h, the load of the text block at +0x10. Wildcarded: branch displacement. matches once in X4.exe v9.00 build 900-611726 (RVA 0x000CB450)."
+      },
+      "900-611726": { "rva": "0x000CB450" }
+    },
+    "XmlNode_SkipChildren": {
+      "_find_hints": {
+        "method": "structural",
+        "steps": [
+          "1. In the universe save reader (UniverseData_Import), find the default case of the element-id switch: it calls this with rcx = the child and rdx = the reader, then loops",
+          "2. Verify: it returns at once when bit 4 of the byte at [rcx] is set, reads the reader's parser at [rdx+0x70], and walks forward to the node's depth from the word at +0x02"
+        ],
+        "verify_strings": [],
+        "byte_sig": "40 53 55 56 57 41 56 48 83 EC 30 F6 01 10 48 8B E9 0F 85 ?? ?? ?? ?? 48 8B 5A 70",
+        "byte_sig_note": "First 27 bytes. push rbx/rbp/rsi/rdi/r14, sub rsp,30h, test byte [rcx],10h, mov rbp,rcx and the load of the parser at [rdx+0x70]. Wildcarded: branch displacement. matches once in X4.exe v9.00 build 900-611726 (RVA 0x0058F4A0)."
+      },
+      "900-611726": { "rva": "0x0058F4A0" }
+    },
+    "XmlNode_ReadChildren": {
+      "_find_hints": {
+        "method": "structural",
+        "steps": [
+          "1. In the universe save reader (UniverseData_Import), find the call made with rcx = the child and rdx = the reader before a known section is applied",
+          "2. Verify: it reads one child at a time through the parser at [rdx+0x70], calls itself on each child that is an open element, and pushes each onto the node's child vector at +0xC8",
+          "3. The bytes also match a second instantiation at 0x1400E6690; this one is the one UniverseData_Import calls"
+        ],
+        "verify_strings": [],
+        "byte_sig": "48 89 5C 24 10 48 89 74 24 18 57 48 83 EC 20 48 8B FA 48 8B D9 33 F6 F6 03 10 0F 85 ?? ?? ?? ?? 48 8B 4F 70 48 85 C9 0F 84 ?? ?? ?? ??",
+        "byte_sig_note": "First 45 bytes. Register homes, sub rsp,20h, mov rdi,rdx, mov rbx,rcx, the flag test and the parser load at [rdi+0x70]. Wildcarded: branch displacements. Matches twice in X4.exe v9.00 build 900-611726 (RVA 0x0058F690 and 0x000E6690); the find hint singles it out."
+      },
+      "900-611726": { "rva": "0x0058F690" }
     },
     "XmlNode_SetAttribute": {
       "_find_hints": {

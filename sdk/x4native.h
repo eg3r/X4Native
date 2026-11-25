@@ -87,4 +87,5 @@
 #include "x4n_buildprocessor.h"
 #include "x4n_ware.h"
 #include "x4n_savexml.h"
+#include "x4n_save.h"
 

@@ -39,6 +39,7 @@ extern "C" __declspec(dllexport) int x4native_api_version(void);
 | Runtime offsets | `offsets` — pre-computed version-dependent values (read via `x4n::offsets()`) |
 | Settings | `get_setting_bool/number/string` and `set_setting_bool/number/string` — per-extension user settings (wrapped by `x4n::settings`) |
 | SaveXML names | `savexml_register(local_name, api_ptr)` and `savexml_lookup(game_name)` — the extension's prefixed save names and the game's own numbers (wrapped by `x4n::savexml`) |
+| Save store | `save_set` / `save_get` / `save_remove` — per-extension key-value data in `<x4native.store>` (wrapped by `x4n::save`) |
 | Reserved | `_reserved[N]` trailing slots for future additions without breaking ABI |
 
 Everything prefixed with `_` is framework-managed. Extensions read through the `x4n::` wrappers; the C ABI is only meant to be stable, not ergonomic.

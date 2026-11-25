@@ -308,6 +308,56 @@ X4_FUNC(void*, BlacklistData_Export, (void* registry, void* parent))
 // Verified: v9.00 build 900-611726, RVA 0x00371D20. Per-build RVA from version_db.
 X4_FUNC(void*, BlacklistData_Import, (void* registry, void* lists))
 
+// UniverseData_Export — writes the universe's sections to the save stream. universe = the
+// universe object; stream = the save's output stream, inside the open <universe> element.
+// Each section is a node of its own: built with XmlNode_Construct, filled, written with
+// XmlNode_Write and destroyed with XmlNode_Destroy; <blacklists> (0x68) is one, filled by
+// BlacklistData_Export. Returns false when a section fails to write, and the caller then
+// abandons the save. Called once per save; an after-hook writes its own nodes to `stream`
+// the same way, and they land as the last children of <universe>.
+// Verified: v9.00 build 900-611726, RVA 0x008DE190. Per-build RVA from version_db.
+X4_FUNC(bool, UniverseData_Export, (void* universe, void* stream))
+
+// UniverseData_Import — reads the universe's sections from the save stream. universe = the
+// universe object; node = the <universe> node, holding no children on entry; reader = the
+// save's input stream. Each child's start tag is read (0x14058F5E0), pushed onto `node` and
+// dispatched by element id: a known one is read whole (XmlNode_ReadChildren) and applied,
+// an unknown one is skipped (XmlNode_SkipChildren). <blacklists> (0x68) calls
+// BlacklistData_Import. `skip_sections` != 0 skips the sections a partial load leaves out.
+// Every child stays on `node` until it returns, so an after-hook finds them there; the core
+// reads an extension's elements whole instead of skipping them (x4n::savexml).
+// Verified: v9.00 build 900-611726, RVA 0x008DC5F0. Per-build RVA from version_db.
+X4_FUNC(bool, UniverseData_Import, (void* universe, void* node, void* reader, void* arg4, int32_t skip_sections))
+
+// XmlNode_Construct — constructs a save XML node in caller-owned storage of
+// X4GameOffsets::xml_node_size bytes. element = its SaveXML id. open = true writes the start
+// tag to `stream` at once, for an element whose children are written straight to the stream;
+// false keeps it in memory until XmlNode_Write. Returns `node`.
+// Verified: v9.00 build 900-611726, RVA 0x004B6270. Per-build RVA from version_db.
+X4_FUNC(void*, XmlNode_Construct, (void* node, void* stream, int32_t element, bool open))
+
+// XmlNode_Write — writes a constructed node, its attributes and its children to the save
+// stream. skip_empty = true writes nothing for a node with no attribute, child or text.
+// Returns false when the stream fails.
+// Verified: v9.00 build 900-611726, RVA 0x0058F300. Per-build RVA from version_db.
+X4_FUNC(bool, XmlNode_Write, (void* node, void* stream, bool skip_empty))
+
+// XmlNode_Destroy — destroys a node built by XmlNode_Construct: its text, its attributes, and
+// its children with everything under them. The node's own storage stays the caller's.
+// Verified: v9.00 build 900-611726, RVA 0x000CB450. Per-build RVA from version_db.
+X4_FUNC(void, XmlNode_Destroy, (void* node))
+
+// XmlNode_SkipChildren — reads past the rest of `node` in the save's input stream without
+// keeping it. The readers call it for an element they do not know. The core hooks it: an
+// element carrying a name an extension registered is read whole (XmlNode_ReadChildren).
+// Verified: v9.00 build 900-611726, RVA 0x0058F4A0. Per-build RVA from version_db.
+X4_FUNC(void, XmlNode_SkipChildren, (void* node, void* reader))
+
+// XmlNode_ReadChildren — reads the rest of `node` from the save's input stream: every child,
+// with its attributes and its own children, pushed onto the node.
+// Verified: v9.00 build 900-611726, RVA 0x0058F690. Per-build RVA from version_db.
+X4_FUNC(void, XmlNode_ReadChildren, (void* node, void* reader))
+
 // LookupKeyName_FormatXMLName — the name a SaveXML id stands for, used as the save is
 // written. id = a pointer to the int32 id. Reads the namespace from the slot at
 // X4_RVA_SAVEXML_NAMESPACE and binary-searches its id-sorted entries; an unknown id

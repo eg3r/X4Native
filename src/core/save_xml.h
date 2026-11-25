@@ -12,6 +12,11 @@
 //   LookupKeyName_FormatXMLName  number -> name, while a save is written
 //   LookupKeyName_LookupName     name -> number, while a save is read
 //
+// A save is read as a stream, and the game's readers skip an element they do
+// not know (XmlNode_SkipChildren). The core hooks that skip too: an element
+// carrying a registered name is read whole instead (XmlNode_ReadChildren), so
+// it is on its parent node when the reader returns.
+//
 // A tag's `name()` is the full stored name, so logs and the file match.
 //
 // Every registered name carries the separator, and no game name does, so the
@@ -26,7 +31,8 @@
 // one session to the next.
 //
 // Free of the game, of MinHook and of the logger so the logic can be tested on
-// its own; core.cpp hooks the two lookups and supplies the log sink.
+// its own; core.cpp hooks the two lookups and the skip, and supplies the log
+// sink.
 // ---------------------------------------------------------------------------
 
 #include <atomic>
@@ -47,6 +53,9 @@ public:
     using FormatXMLNameFn = const char* (*)(const int32_t* id);
     using LookupNameFn    = int32_t (*)(const char* name, const std::string* context);
 
+    /// The game's skip of an element it does not know, and its whole read.
+    using ReadFn = void (*)(void* node, void* reader);
+
     /// Receives the core's log lines. Null leaves them unsaid.
     using LogFn = void (*)(const char* line);
 
@@ -54,6 +63,10 @@ public:
     /// only while attached: a name with a number the game cannot write or read
     /// back would lose what it carries.
     static void attach(FormatXMLNameFn format, LookupNameFn lookup);
+
+    /// Takes the skip's original and the whole read once the skip is hooked.
+    /// `element_offset` is where a node holds its element id.
+    static void attach_reader(ReadFn skip, ReadFn read, uint32_t element_offset);
 
     /// Refuses registration; the originals and the tables stay, because a
     /// detour may still be inside one while the core removes the hooks.
@@ -89,6 +102,10 @@ public:
     static const char* format_xml_name(const int32_t* id);
     static int32_t lookup_name(const char* name, const std::string* context);
 
+    /// The skip detour: an element with an added number is read whole; any
+    /// other goes to the original unchanged.
+    static void skip_children(void* node, void* reader);
+
 private:
     /// One immutable set of added names, published whole. `names` is indexed by
     /// `number - first_added`; `numbers` finds a name without building a
@@ -118,6 +135,9 @@ private:
     static std::atomic<bool>                            s_attached;
     static std::atomic<FormatXMLNameFn>                 s_format_original;
     static std::atomic<LookupNameFn>                    s_lookup_original;
+    static std::atomic<ReadFn>                          s_skip_original;
+    static std::atomic<ReadFn>                          s_read_children;
+    static std::atomic<uint32_t>                        s_element_offset;
     static std::atomic<LogFn>                           s_log;
 
     static std::mutex                                   s_miss_mutex;

@@ -3,6 +3,7 @@
 #include "event_system.h"
 #include "game_api.h"
 #include "hook_manager.h"
+#include "save_store.h"
 #include "save_xml.h"
 #include "save_xml_node.h"
 #include "settings_manager.h"
@@ -25,6 +26,7 @@ extern get_lua_property_str_fn g_get_lua_property_str;
 #include <filesystem>
 #include <fstream>
 #include <algorithm>
+#include <cstring>
 #include <regex>
 
 namespace fs = std::filesystem;
@@ -360,6 +362,14 @@ static void api_log_named(int level, const char* message,
 // ---------------------------------------------------------------------------
 // Loading — LoadLibrary + resolve exports + SEH-wrapped init
 // ---------------------------------------------------------------------------
+
+bool ExtensionManager::is_loaded(const char* extension_id) {
+    if (!extension_id) return false;
+    for (const auto& ext : s_extensions) {
+        if (ext.initialized && ext.extension_id == extension_id) return true;
+    }
+    return false;
+}
 
 void ExtensionManager::load_all() {
     for (auto& ext : s_extensions) {
@@ -809,6 +819,73 @@ static int32_t api_savexml_lookup(const char* game_name) {
     return SaveXml::game_number(ns, game_name);
 }
 
+// Save store — the caller resolved as the settings and SaveXML calls do.
+static int api_save_set(const char* key, int type, const void* value, void* api_ptr) {
+    const char* id = ext_id_from_api(api_ptr);
+    if (!id || !key || !value) return 0;
+
+    SaveStore::Value stored;
+    switch (static_cast<SaveStore::Type>(type)) {
+        case SaveStore::Type::Bool:
+            stored.type = SaveStore::Type::Bool;
+            stored.boolean = *static_cast<const int*>(value) != 0;
+            break;
+        case SaveStore::Type::Int:
+            stored.type = SaveStore::Type::Int;
+            stored.integer = *static_cast<const int64_t*>(value);
+            break;
+        case SaveStore::Type::Number:
+            stored.type = SaveStore::Type::Number;
+            stored.number = *static_cast<const double*>(value);
+            break;
+        case SaveStore::Type::String:
+            stored.type = SaveStore::Type::String;
+            stored.text = static_cast<const char*>(value);
+            break;
+        default:
+            return 0;
+    }
+    return SaveStore::set(id, key, stored) ? 1 : 0;
+}
+
+static int api_save_get(const char* key, int type, void* out, uint32_t out_size, void* api_ptr) {
+    const char* id = ext_id_from_api(api_ptr);
+    if (!id || !key || !out) return 0;
+
+    SaveStore::Value stored;
+    if (!SaveStore::get(id, key, &stored)) return 0;
+    if (static_cast<int32_t>(stored.type) != type) {
+        Logger::warn("SaveXML store: {} key '{}': asked for another type than the stored one", id, key);
+        return 0;
+    }
+
+    switch (stored.type) {
+        case SaveStore::Type::Bool:
+            *static_cast<int*>(out) = stored.boolean ? 1 : 0;
+            return 1;
+        case SaveStore::Type::Int:
+            *static_cast<int64_t*>(out) = stored.integer;
+            return 1;
+        case SaveStore::Type::Number:
+            *static_cast<double*>(out) = stored.number;
+            return 1;
+        case SaveStore::Type::String:
+            if (stored.text.size() + 1 > out_size) {
+                Logger::warn("SaveXML store: {} key '{}': the value does not fit the buffer", id, key);
+                return 0;
+            }
+            std::memcpy(out, stored.text.c_str(), stored.text.size() + 1);
+            return 1;
+    }
+    return 0;
+}
+
+static int api_save_remove(const char* key, void* api_ptr) {
+    const char* id = ext_id_from_api(api_ptr);
+    if (!id || !key) return 0;
+    return SaveStore::remove(id, key) ? 1 : 0;
+}
+
 void ExtensionManager::fill_api(X4NativeAPI& api, ExtensionInfo& ext) {
     s_game_ver_cache = s_game_version.c_str();
 
@@ -850,6 +927,9 @@ void ExtensionManager::fill_api(X4NativeAPI& api, ExtensionInfo& ext) {
     api.savexml_get_attribute     = api_savexml_get_attribute;
     api.savexml_node_element      = api_savexml_node_element;
     api.savexml_node_children     = api_savexml_node_children;
+    api.save_set                  = api_save_set;
+    api.save_get                  = api_save_get;
+    api.save_remove               = api_save_remove;
     api._ext_id               = ext.extension_id.c_str();
     api._ext_display_name     = ext.display_name.c_str();
     api._ext_priority         = static_cast<intptr_t>(ext.priority);

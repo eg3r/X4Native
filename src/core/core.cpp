@@ -14,8 +14,10 @@
 #include "extension_manager.h"
 #include "game_api.h"
 #include "hook_manager.h"
+#include "save_store.h"
 #include "save_xml.h"
 #include "save_xml_node.h"
+#include "save_xml_layout.h"
 #include "settings_manager.h"
 #include "version.h"
 #include "x4native_defs.h"
@@ -429,10 +431,11 @@ static void remove_md_event_hook() {
 // format_xml_name and lookup_name, which answer a name or number an extension
 // added from the shared table (save_xml.h) and pass every other call to the
 // game. Both functions read the SaveXML namespace from its global slot
-// themselves; every call they receive is a SaveXML lookup. See
-// docs/rev/SAVE_XML.md.
+// themselves; every call they receive is a SaveXML lookup. A third detour on
+// the readers' skip reads an added element whole. See docs/rev/SAVE_XML.md.
 
-static const char* const kSaveXmlLookups[] = {"LookupKeyName_FormatXMLName", "LookupKeyName_LookupName"};
+static const char* const kSaveXmlHooks[] = {"LookupKeyName_FormatXMLName", "LookupKeyName_LookupName",
+                                            "XmlNode_SkipChildren"};
 
 // SaveXml keeps no logger of its own (the bed compiles it without the core), so
 // the core hands it its sink here.
@@ -445,6 +448,162 @@ static int s_savexml_notice_subscription = 0;
 
 static void savexml_notice(const char*, void*, void*) {
     if (!x4n::SaveXml::attached() && g_raise_lua_event) g_raise_lua_event("x4native.savexml_unavailable", "");
+}
+
+// ---------------------------------------------------------------------------
+// The core's save store — x4n::save
+// ---------------------------------------------------------------------------
+// Two MinHook detours on the universe save and load, with the core's own
+// callbacks in the hook manager's chain. An extension hooking the same two
+// functions joins that chain instead of installing a second detour.
+
+static void* s_universe_export_trampoline = nullptr;
+static void* s_universe_import_trampoline = nullptr;
+static int   s_store_save_hook = 0;
+static int   s_store_load_hook = 0;
+static int   s_store_world_subscription = 0;
+
+// Storage for the holder node the store is built under.
+static constexpr size_t kSaveHolderSize = 0x200;
+static_assert(X4_XML_NODE_SIZE <= kSaveHolderSize);
+
+static int64_t current_player() {
+    auto* game = x4n::GameAPI::table();
+    return game && game->GetPlayerID ? static_cast<int64_t>(game->GetPlayerID()) : 0;
+}
+
+static int32_t store_register_name(const char* ext_id, const char* local_name) {
+    const void* ns = s_offsets.savexml_namespace
+        ? *static_cast<void* const*>(s_offsets.savexml_namespace) : nullptr;
+    return x4n::SaveXml::register_name(ns, ext_id, local_name);
+}
+
+static int32_t store_game_number(const char* name) {
+    const void* ns = s_offsets.savexml_namespace
+        ? *static_cast<void* const*>(s_offsets.savexml_namespace) : nullptr;
+    return x4n::SaveXml::game_number(ns, name);
+}
+
+static const void* store_savexml_namespace() {
+    return s_offsets.savexml_namespace ? *static_cast<void* const*>(s_offsets.savexml_namespace) : nullptr;
+}
+
+static bool universe_export_detour(void* universe, void* stream) {
+    bool result = false;
+    X4HookContext ctx{};
+    ctx.function_name = "UniverseData_Export";
+    void* args[] = {&universe, &stream, nullptr};
+    ctx.args = args;
+    ctx.result = &result;
+    ctx.skip_original = 0;
+    x4n::HookManager::run_before_hooks(&ctx);
+    if (!ctx.skip_original && s_universe_export_trampoline) {
+        result = reinterpret_cast<bool (*)(void*, void*)>(s_universe_export_trampoline)(universe, stream);
+    }
+    x4n::HookManager::run_after_hooks(&ctx);
+    return result;
+}
+
+static bool universe_import_detour(void* universe, void* node, void* reader, void* a4, int32_t skip_sections) {
+    bool result = false;
+    X4HookContext ctx{};
+    ctx.function_name = "UniverseData_Import";
+    void* args[] = {&universe, &node, &reader, &a4, &skip_sections, nullptr};
+    ctx.args = args;
+    ctx.result = &result;
+    ctx.skip_original = 0;
+    x4n::HookManager::run_before_hooks(&ctx);
+    if (!ctx.skip_original && s_universe_import_trampoline) {
+        result = reinterpret_cast<bool (*)(void*, void*, void*, void*, int32_t)>(s_universe_import_trampoline)(
+            universe, node, reader, a4, skip_sections);
+    }
+    x4n::HookManager::run_after_hooks(&ctx);
+    return result;
+}
+
+// The store is built under a holder node of the core's own; each node under the
+// holder is written to the save stream, then the holder is destroyed with
+// everything under it, as the game writes each universe section.
+static int store_save_after(X4HookContext* ctx) {
+    if (!ctx || !ctx->args || !ctx->result || !*static_cast<bool*>(ctx->result)) return 0;
+    const auto* game = x4n::GameAPI::table();
+    if (!game || !game->XmlNode_Construct || !game->XmlNode_Write || !game->XmlNode_Destroy) return 0;
+
+    void* stream = *static_cast<void**>(ctx->args[1]);
+    alignas(X4_XML_NODE_ALIGNMENT) uint8_t storage[kSaveHolderSize];
+    void* holder = game->XmlNode_Construct(storage, stream, 0, false);
+    if (x4n::SaveStore::write(holder)) {
+        for (void* node : x4n::SaveStore::children(holder)) {
+            if (!game->XmlNode_Write(node, stream, true)) {
+                *static_cast<bool*>(ctx->result) = false;
+                break;
+            }
+        }
+    }
+    game->XmlNode_Destroy(holder);
+    return 0;
+}
+
+static int store_load_after(X4HookContext* ctx) {
+    if (!ctx || !ctx->args || !ctx->args[1]) return 0;
+    x4n::SaveStore::begin_load(*static_cast<void**>(ctx->args[1]));
+    return 0;
+}
+
+static void store_world_ready(const char*, void*, void*) { x4n::SaveStore::world_ready(); }
+
+static void uninstall_save_store_hooks();
+
+static bool install_save_store_hooks() {
+    using namespace x4n;
+
+    s_universe_export_trampoline =
+        HookManager::ensure_detour("UniverseData_Export", reinterpret_cast<void*>(&universe_export_detour));
+    s_universe_import_trampoline =
+        HookManager::ensure_detour("UniverseData_Import", reinterpret_cast<void*>(&universe_import_detour));
+    if (!s_universe_export_trampoline || !s_universe_import_trampoline) {
+        Logger::warn("Save store: a universe function is not resolved for this build; the store is off");
+        return false;
+    }
+
+    SaveStore::Host host{};
+    host.game = GameAPI::table();
+    host.offsets = &s_offsets;
+    host.register_name = &store_register_name;
+    host.game_number = &store_game_number;
+    host.savexml_namespace = &store_savexml_namespace;
+    host.is_loaded = &ExtensionManager::is_loaded;
+    host.log = &savexml_log;
+    SaveStore::install(host, g_stash_set, g_stash_get, g_stash_remove);
+
+    s_store_save_hook = HookManager::hook_after("UniverseData_Export", &store_save_after, nullptr, 0, "x4native");
+    s_store_load_hook = HookManager::hook_after("UniverseData_Import", &store_load_after, nullptr, 0, "x4native");
+    s_store_world_subscription = EventSystem::subscribe("on_game_loaded", &store_world_ready, nullptr);
+    if (s_store_save_hook <= 0 || s_store_load_hook <= 0 || s_store_world_subscription <= 0) {
+        Logger::error("Save store: a callback could not be registered; the store is off");
+        uninstall_save_store_hooks();
+        return false;
+    }
+    Logger::info("Save store installed (x4n::save)");
+    return true;
+}
+
+static void uninstall_save_store_hooks() {
+    if (s_store_world_subscription > 0) {
+        x4n::EventSystem::unsubscribe(s_store_world_subscription);
+        s_store_world_subscription = 0;
+    }
+    if (s_store_save_hook > 0) {
+        x4n::HookManager::unhook(s_store_save_hook);
+        s_store_save_hook = 0;
+    }
+    if (s_store_load_hook > 0) {
+        x4n::HookManager::unhook(s_store_load_hook);
+        s_store_load_hook = 0;
+    }
+    // The trampolines stay until the hook manager removes the detours: a save
+    // or load already inside one must still reach the game.
+    x4n::SaveStore::uninstall();
 }
 
 // Creates the hook without enabling it; the target, or null on failure.
@@ -462,11 +621,11 @@ static void* create_savexml_hook(const char* name, void* detour, void** original
     return target;
 }
 
-// Disables and removes both hooks. The originals and the name table stay, for
+// Disables and removes the three hooks. The originals and the name table stay, for
 // a detour that was already inside one when the hooks were removed.
 static void remove_savexml_hooks() {
     if (!x4n::SaveXml::attached()) return;
-    for (const char* name : kSaveXmlLookups) {
+    for (const char* name : kSaveXmlHooks) {
         void* target = x4n::GameAPI::get_internal(name);
         MH_DisableHook(target);
         MH_RemoveHook(target);
@@ -474,29 +633,39 @@ static void remove_savexml_hooks() {
     x4n::SaveXml::detach();
 }
 
-// Both lookups or neither: a name the save can be written with but not read
-// back, or the reverse, would lose the data it carries. The originals are
-// attached before either hook is enabled, so no call reaches SaveXml without
-// them.
+// All three or none: a name the save can be written with but not read back, or
+// the reverse, would lose the data it carries. The originals are attached before
+// any hook is enabled, so no call reaches SaveXml without them.
 static bool install_savexml_hooks() {
     x4n::SaveXml::set_log(&savexml_log);
     x4n::SaveXmlNode::attach(x4n::GameAPI::table(), &savexml_log);
 
-    x4n::SaveXml::FormatXMLNameFn format = nullptr;
-    x4n::SaveXml::LookupNameFn    lookup = nullptr;
-    void* format_target = create_savexml_hook(kSaveXmlLookups[0], reinterpret_cast<void*>(&x4n::SaveXml::format_xml_name),
-                                              reinterpret_cast<void**>(&format));
-    void* lookup_target = format_target
-        ? create_savexml_hook(kSaveXmlLookups[1], reinterpret_cast<void*>(&x4n::SaveXml::lookup_name),
-                              reinterpret_cast<void**>(&lookup))
-        : nullptr;
-    if (!lookup_target) {
-        if (format_target) MH_RemoveHook(format_target);
+    const auto read = reinterpret_cast<x4n::SaveXml::ReadFn>(x4n::GameAPI::get_internal("XmlNode_ReadChildren"));
+    if (!read) {
+        x4n::Logger::warn("SaveXML name hook: XmlNode_ReadChildren not resolved (missing RVA for this build?)");
         return false;
     }
 
+    x4n::SaveXml::FormatXMLNameFn format = nullptr;
+    x4n::SaveXml::LookupNameFn    lookup = nullptr;
+    x4n::SaveXml::ReadFn          skip   = nullptr;
+    void* const detours[] = {reinterpret_cast<void*>(&x4n::SaveXml::format_xml_name),
+                             reinterpret_cast<void*>(&x4n::SaveXml::lookup_name),
+                             reinterpret_cast<void*>(&x4n::SaveXml::skip_children)};
+    void** const originals[] = {reinterpret_cast<void**>(&format), reinterpret_cast<void**>(&lookup),
+                                reinterpret_cast<void**>(&skip)};
+    void* targets[3] = {};
+    for (size_t i = 0; i < 3; ++i) {
+        targets[i] = create_savexml_hook(kSaveXmlHooks[i], detours[i], originals[i]);
+        if (!targets[i]) {
+            for (size_t j = 0; j < i; ++j) MH_RemoveHook(targets[j]);
+            return false;
+        }
+    }
+
+    x4n::SaveXml::attach_reader(skip, read, X4_XML_NODE_OFFSET_ELEMENT);
     x4n::SaveXml::attach(format, lookup);
-    for (void* target : {format_target, lookup_target}) {
+    for (void* target : targets) {
         const MH_STATUS status = MH_EnableHook(target);
         if (status != MH_OK) {
             x4n::Logger::error("SaveXML name hook: MH_EnableHook failed: {}", MH_StatusToString(status));
@@ -514,6 +683,7 @@ static bool install_savexml_hooks() {
 
 static void impl_discover_extensions() {
     x4n::SaveXml::begin_load();
+    x4n::SaveStore::ensure_names();
     x4n::ExtensionManager::discover();
     x4n::ExtensionManager::load_all();
 }
@@ -544,24 +714,31 @@ static void impl_log(int level, const char* message) {
 
 static void impl_prepare_reload() {
     x4n::Logger::info("Preparing for core hot-reload...");
+    x4n::SaveStore::stash(current_player());
     x4n::EventSystem::fire("on_before_reload");
     x4n::EventSystem::unsubscribe(s_savexml_notice_subscription);
     x4n::ExtensionManager::shutdown();
+    // An extension's shutdown handler may have written to the store; stash the
+    // final values, not the ones from before it ran.
+    x4n::SaveStore::stash(current_player());
     remove_md_event_hook();
     remove_radar_visibility_hook();
     remove_frame_tick_hook();
     remove_savexml_hooks();
+    uninstall_save_store_hooks();
     x4n::HookManager::remove_all();
 }
 
 static void impl_shutdown() {
     x4n::Logger::info("Core shutting down...");
+    x4n::SaveStore::stash(current_player());
     x4n::ExtensionManager::shutdown();
     x4n::SettingsManager::shutdown();
     remove_md_event_hook();
     remove_radar_visibility_hook();
     remove_frame_tick_hook();
     remove_savexml_hooks();
+    uninstall_save_store_hooks();
     x4n::HookManager::shutdown();
     x4n::GameAPI::shutdown();
     x4n::EventSystem::shutdown();
@@ -673,6 +850,10 @@ static int core_init_impl(CoreInitContext* ctx) {
                            "in the save this session, and saving drops what a loaded save carries for them");
     }
     s_savexml_notice_subscription = x4n::EventSystem::subscribe("on_universe_ready", &savexml_notice);
+
+    // 6b. The core's save store — x4n::save
+    if (!rva_safe_mode)
+        install_save_store_hooks();
 
     // 6. Fill the proxy's dispatch table
     ctx->dispatch->discover_extensions    = impl_discover_extensions;

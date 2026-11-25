@@ -100,6 +100,7 @@ public:
 
     static void discover();
     static void load_all();
+    static bool is_loaded(const char* extension_id);  // a content.xml id whose extension is initialised
     static void tick();                   // throttled mtime check — call every frame
     static void flush_pending_reloads();  // safe reload point — call before firing frame events
     static const std::vector<ExtensionInfo>& extensions() { return s_extensions; }
