@@ -11,6 +11,7 @@
 //   int hp; x4n::stash::get("hp", &hp);
 //   x4n::stash::set_string("name", "test");
 //   const char* s = x4n::stash::get_string("name");
+//   uint32_t size; const void* blob = x4n::stash::get_raw("blob", &size);
 // ---------------------------------------------------------------------------
 #pragma once
 
@@ -28,7 +29,12 @@ inline bool set(const char* key, const void* data, uint32_t size) {
 
 /// Retrieve a raw blob. Returns nullptr if not found.
 /// *out_size receives the byte count. Pointer valid until next set/remove.
-inline const void* get(const char* key, uint32_t* out_size = nullptr) {
+///
+/// Named get_raw, not get: as an overload get(key, uint32_t* out_size) it
+/// was chosen over the typed get<T> whenever T was uint32_t, so
+/// `uint32_t v; get("k", &v)` stored the blob's size (4) in v instead of
+/// the value.
+inline const void* get_raw(const char* key, uint32_t* out_size = nullptr) {
     auto* api = detail::g_api;
     const char* ns = api->_ext_id;
     return api->stash_get(ns, key, out_size);
@@ -62,7 +68,7 @@ inline bool get(const char* key, T* out) {
     static_assert(std::is_trivially_copyable_v<T>,
                   "x4n::stash::get<T> requires a trivially-copyable type");
     uint32_t size = 0;
-    const void* p = get(key, &size);
+    const void* p = get_raw(key, &size);
     if (!p || size != sizeof(T)) return false;
     std::memcpy(out, p, sizeof(T));
     return true;
@@ -77,7 +83,7 @@ inline bool set_string(const char* key, const char* value) {
 /// Retrieve a stored string. Returns nullptr if not found.
 inline const char* get_string(const char* key) {
     uint32_t size = 0;
-    const void* p = get(key, &size);
+    const void* p = get_raw(key, &size);
     if (!p || size == 0) return nullptr;
     return static_cast<const char*>(p);
 }

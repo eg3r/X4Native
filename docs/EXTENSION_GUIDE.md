@@ -56,7 +56,7 @@ Tells the framework where to find your DLL and how to load it:
 | `priority` | No | Load order (lower = earlier, default 0) |
 | `min_api_version` | No | Minimum framework API version required |
 | `autoreload` | No | `true` → watch DLL for changes and hot-reload in-place (default `false`) |
-| `logfile` | No | Log filename inside `<profile>\x4native\` (default `<extension_id>.log`). Must be a relative name. |
+| `logfile` | No | Log filename inside `<profile>\x4native\<extension_id>\` (default `<extension_id>.log`). Must be a relative name that stays in that folder (see [Logging](#logging)). |
 | `settings` | No | Array of user-configurable settings surfaced in **Settings → Extensions → `…`** and persisted per-user. See [Settings](#settings). |
 
 > `name` was required in earlier versions and is now ignored — extension identity and the log prefix are read from `content.xml`. Leaving it in place produces a one-line deprecation warning.
@@ -381,7 +381,7 @@ x4n::log::to_file("events.log").info("event: {}", id);
 x4n::log::set_log_file("mymod_v2.log");
 ```
 
-`logfile` in `x4native.json` sets an alternative default filename inside your extension's subfolder (`<profile>\x4native\<extension_id>\`). Must be a relative name with no `..` segments:
+`logfile` in `x4native.json` sets an alternative default filename inside your extension's subfolder (`<profile>\x4native\<extension_id>\`):
 
 ```json
 {
@@ -390,7 +390,16 @@ x4n::log::set_log_file("mymod_v2.log");
 }
 ```
 
-> **Fallback when the profile path is unresolvable.** If `GetSaveFolderPath()` returns empty — an edge case that shouldn't happen during a normal game session but is theoretically possible very early during core init — logs fall back to the extension's install folder (`extensions\<ext_id>\`) for the affected call. This applies to all three sinks: the default per-extension log, `set_log_file(name)` redirects, and `to_file(name)` one-shots. The relative-path safety checks (`..` and absolute-path rejection) still apply. Settings writes use the same profile path but do **not** fall back — they refuse to persist and log a warning instead, since settings are expected to survive extension updates.
+All three ways of naming a log file (`logfile`, `set_log_file()`, `to_file()`) take a relative name, and sub-folders are allowed (`"events/trade.log"`). A name that could leave your subfolder is rejected with a warning in the framework log; `logfile` then falls back to the default name, and `set_log_file()` and `to_file()` do nothing. Rejected are names that:
+
+- start with `\` or `/`,
+- contain `:` (a drive or a data stream) or a `..` segment,
+- use a Windows device name (`nul`, `con.log`, `COM1.txt`),
+- have a segment ending in `.` or a space.
+
+If your extension passes on a name it received from outside (a config file, a network request), restrict it further yourself, for example to a fixed set of names.
+
+> **Fallback when the profile path is unresolvable.** If `GetSaveFolderPath()` returns empty — an edge case that shouldn't happen during a normal game session but is theoretically possible very early during core init — logs fall back to the extension's install folder (`extensions\<ext_id>\`) for the affected call. This applies to all three sinks: the default per-extension log, `set_log_file(name)` redirects, and `to_file(name)` one-shots. The name checks above still apply. Settings writes use the same profile path but do **not** fall back — they refuse to persist and log a warning instead, since settings are expected to survive extension updates.
 
 > **Migration from the old API** (removed, not deprecated):
 > | Old | New |
@@ -529,7 +538,7 @@ MyState state = {100, 1.0f, 2.0f, 3.0f};
 x4n::stash::set("state", &state, sizeof(state));
 
 uint32_t size = 0;
-auto* p = x4n::stash::get("state", &size);  // returns nullptr if missing
+auto* p = x4n::stash::get_raw("state", &size);  // returns nullptr if missing
 if (p && size == sizeof(MyState))
     memcpy(&state, p, sizeof(state));
 
@@ -539,6 +548,8 @@ x4n::stash::clear();  // only clears YOUR extension's keys
 ```
 
 **Typed helpers** (`set<T>` / `get<T>`) require trivially-copyable types and perform a strict size check — if the stored blob size doesn't match `sizeof(T)`, `get<T>` returns `false`. This protects against reading stale data after struct layout changes during development.
+
+**Raw access is `get_raw(key, &size)`.** Up to SDK `v9.0.0-611726` it was an overload `get(key, uint32_t* out_size)`, which the compiler preferred over the typed `get` for a `uint32_t` value: `uint32_t v; x4n::stash::get("k", &v)` put the blob's size into `v`. With the rename, `get(key, &value)` is typed for every `T`. Code that read a blob through the old overload (`auto* p = x4n::stash::get("state", &size)`) no longer compiles; change it to `get_raw`.
 
 | Property | Value |
 |----------|-------|
@@ -699,6 +710,7 @@ Each extension controls its own autoreload independently via its `x4native.json`
 - **Never call game functions before `on_game_loaded`** — the game world isn't ready yet.
 - **All code runs on the UI thread** — no threading required, no thread safety concerns.
 - **Extensions are auto-cleaned on unload** — hooks and event subscriptions are removed automatically, but explicit cleanup in `X4N_SHUTDOWN` is recommended.
+- **`X4N_SHUTDOWN` does not run when the game exits** — the process ends without unloading extensions, so do not rely on it for anything that must be written before exit. If your extension starts threads of its own, do all stopping and joining in `X4N_SHUTDOWN` and never in the destructor of a static object: at exit Windows has already ended every other thread when those destructors run, so one that waits for a thread never returns and the game process hangs. Keep such objects behind plain pointers that you create in `X4N_EXTENSION` and delete in `X4N_SHUTDOWN`.
 - **Static variables are lost on reload** — Use `x4n::stash` (fast, in-memory, survives reload), `x4n::save` (stored in the savegame) or disk files (survives game exit) to preserve state.
 - **Protected UI mode must be OFF** in game settings for native extensions to work.
 - **Game updates may break hooks** — function signatures or addresses can change between patches.

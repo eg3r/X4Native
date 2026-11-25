@@ -262,8 +262,8 @@ static void api_log_ext(int level, const char* message, void* api_ptr) {
 
 // api_init_log — called by x4n::log::set_log_file("filename") to redirect
 // the extension's default log. Filename is relative to the extension's
-// subfolder (<profile>\x4native\<ext_id>\) — absolute paths and traversal
-// are rejected.
+// subfolder (<profile>\x4native\<ext_id>\) — a name that could leave that
+// folder is rejected (Logger::is_safe_relative_name).
 static void api_init_log(const char* filename, void* api_ptr) {
     auto [api, ext] = resolve_ext(api_ptr);
     if (!ext) return;
@@ -312,8 +312,10 @@ static void api_init_log(const char* filename, void* api_ptr) {
 // api_log_named — backs x4n::log::to_file("name").info(...).
 // Opens `<profile>\x4native\<ext_id>\<filename>` for append, writes one
 // record, closes. Author-provided nested paths are allowed (intermediate
-// subfolders are created on first write) but absolute paths and `..`
-// segments are rejected — all writes stay inside the per-extension subfolder.
+// subfolders are created on first write) but a name that could leave the
+// folder is rejected (Logger::is_safe_relative_name: rooted paths, ':',
+// `..` segments, device names) — all writes stay inside the per-extension
+// subfolder.
 static void api_log_named(int level, const char* message,
                            const char* filename, void* api_ptr) {
     if (!filename || !filename[0]) {
