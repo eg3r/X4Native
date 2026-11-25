@@ -48,20 +48,29 @@ A node whose name has no number cannot be written under that name, and a name in
 
 ## 4. Names added at runtime
 
-`x4n::savexml::register_tag` gives an extension's name a number both lookups answer, held by the `x4n::savexml::SaveXmlTag` it returns.
+`x4n::savexml::register_tag` gives an extension's local name a number both lookups answer, held by the `x4n::savexml::SaveXmlTag` it returns.
 
 ```cpp
 if (const auto tag = x4n::savexml::register_tag("my_element")) { /* build nodes with tag->number() */ }
 ```
 
-- **One table for every extension**, in the core. A name registered twice, by one extension or two, has one number.
-- **A name the game knows keeps the game's number**, found by reading the namespace's entries, and its lookups stay the game's.
-- **A new name gets the next number above the game's highest.** Numbers are given out first come first served for the process's life; they never reach the file, which holds names, so they may differ between sessions.
-- **The core hooks both lookups** with MinHook and answers an added name or number before the game's; every other call goes to the game unchanged.
+- **The core stores every name under the caller's extension id**, as `<extension id>.<local name>`. The caller is the `X4NativeAPI*` the extension was initialised with; its id is the `content.xml` id. An extension registers its local names and never writes or parses the separator.
+- **Registering always adds a prefixed name.** No registration returns a game number: `blacklist` registered by `my_mod` is stored as `my_mod.blacklist` and gets a number of its own.
+- **A game name is read, not registered.** `x4n::savexml::game_number("blacklist")` answers the game's own number and registers nothing. It reads the game's table only, and answers 0 for an unknown name, an empty name, or before the namespace exists.
+- **One table for every extension**, in the core. A name registered again by the same extension keeps its number; the same local name from two extensions gets two names and two numbers.
+- **A new name gets the next number above the game's highest.** Numbers are given out first come first served for the life of the core; they never reach the file, which holds names, so they may differ between sessions.
+- **The core hooks both lookups** with MinHook and answers an added name or number before the game's. Every name without the separator, and every number below the first added, goes to the game unchanged, without a lock or an allocation.
+- **An id or local name that is not a valid XML name is refused**, and so is one carrying the separator; the call returns 0 and the log names the id and the reason.
 - **Registration fails, returning no tag,** when the two hooks are not both installed (a missing RVA, or the build-mismatch safe mode) or before the game has built the namespace.
-- **Register at `x4native_init`.** A save's names are resolved while its file is parsed, before any list, station or other object is read from the nodes; a name registered later is not recognized in that save. Extensions are initialised again on every save load, before the world loads (`docs/ARCHITECTURE.md`, "Save-Load Lifecycle"), and the table lives for the process, so a name registered once is known to every later save.
+- **Register at `x4native_init`.** A save's names are resolved while its file is parsed, before any list, station or other object is read from the nodes; a name registered later is not recognized in that save. Extensions are initialised again on every save load, before the world loads (`docs/ARCHITECTURE.md`, "Save-Load Lifecycle"), and the table lives for the life of the core, so a name registered once is known to every later save.
+- **Each registration is logged with its owner**, and a load that holds data from an extension that is not loaded logs it once per name per load:
 
-The call is `X4NativeAPI::savexml_register`, taken from `_reserved` without an API version change.
+```text
+SaveXML: my_mod registered 'my_mod.state' = 1338
+SaveXML: save contains data from 'my_mod' (not loaded): 'my_mod.state' skipped, it is dropped on the next save
+```
+
+The calls are `X4NativeAPI::savexml_register` and `X4NativeAPI::savexml_lookup`, taken from `_reserved` without an API version change.
 
 ---
 
@@ -92,24 +101,24 @@ An extension that writes into a save is native code with full process access, as
 What no extension can do safely alone is number its names, because the numbers are shared by every extension in the process:
 
 - **Without the core,** each extension hooks both lookups itself, and the detours chain. Each picks numbers above the game's highest on its own, so two extensions take the same number for different names. Both extensions' nodes are then written under one name and read back as one number, and each extension reads the other's data as its own. The game skips nothing, because every node carries a valid number: the corruption crosses extensions and nothing reports it.
-- **With the core,** there is one table and one pair of hooks. A name has one number whichever extension registers it, a name the game knows keeps the game's number, the hooks are installed both or neither, and the originals are attached before either hook is enabled.
+- **With the core,** there is one table and one pair of hooks. A name is stored under the caller's id, so the same local name from two extensions is two names with two numbers. A name the game adds in a later build cannot collide with an added one either, because every added name carries the separator and no game name does. The hooks are installed both or neither, and the originals are attached before either hook is enabled.
 
-The core takes the shared, collision-prone part and does it once; each extension keeps what is its own, the nodes it builds.
+The core takes the shared, collision-prone part and does it once; each extension keeps what is its own, the nodes it builds. The detours cost the game nothing: a game name, or a game number below the first added, is answered by the game without a table read, a lock or an allocation.
 
 | Owner | Guarantees |
 |-------|------------|
-| Core (`x4n::savexml`) | A registered name has one number in the process, both lookups answer it, and every other lookup reaches the game unchanged |
-| Extension | The nodes it builds are well-formed, are added beside the game's, and can be skipped on load |
+| Core (`x4n::savexml`) | A registered name is stored under its extension's id, both lookups answer it, and every game name and game number reaches the game unchanged |
+| Extension | The nodes it builds are well-formed, are written beside the game's, and can be skipped on load |
 
 ---
 
 ## 7. Why an addition does not break a save
 
-`docs/SDK_CONTRACT.md` warns: never write to save data from native code, and points to the Lua/MD bridge instead. Data sent over the bridge reaches the same file, since the game stores Mission Director variables in the save, and `docs/EXTENSION_GUIDE.md` describes `save="1"` for an extension that adds persistent data. What the warning protects is a save the game can always load, and an addition made through `x4n_savexml.h` keeps to it:
+`docs/SDK_CONTRACT.md` allows native code to add save data only through `x4n::savexml`, beside the game's own, never changing or removing what the game wrote; the Lua/MD bridge and the stash stay for the other cases. `docs/EXTENSION_GUIDE.md` describes `save="1"` for an extension that adds persistent data. What the rule protects is a save the game can always load, and an addition made through `x4n::savexml` keeps to it:
 
 - **It is additive.** An extension adds its own elements or attributes beside the game's; it changes and removes nothing the game wrote.
 - **Nothing in the game reads the added nodes, so they block nothing.** The game's readers match the ids they know and skip every other node, whatever its contents.
-- **The game rebuilds what it saves.** The list writer, for one, rebuilds every `<blacklist>` element from its list record on each save, so a save made without the extension drops the added child and nothing else.
+- **The game rebuilds what it saves.** Every writer writes from the game's own objects on each save, so a save made without the extension drops what the extension added and nothing else. Shown in game for build 900-611726: an element the game does not know, added under `<universe>` and at the top level of a save, is gone from the next save, and a save written with an extension's element loads cleanly without the extension and drops it on the next save.
 - **The numbers never reach the file.** The file holds names; numbers are assigned again in each session.
 
-**The worst case: a player removes the extension.** Neither the game nor the save breaks. A save made with the extension holds a little extra data. The next load logs one "not recognized" line per added element and skips it, and the next save no longer carries it.
+**The worst case: a player removes the extension.** Neither the game nor the save breaks. A save made with the extension holds a little extra data. The next load logs one line per added name, naming the missing extension, and skips its elements, and the next save no longer carries them.

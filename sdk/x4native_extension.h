@@ -293,19 +293,24 @@ typedef struct X4NativeAPI {
                                  char*       out_buf,
                                  size_t      buf_size);
 
-    // --- SaveXML names. SDK wrapper in x4n_savexml.h. ---
+    // --- SaveXML names. SDK wrappers in x4n_savexml.h. ---
 
-    // Gives `name` a number both SaveXML lookups answer; a name the game knows
-    // keeps the game's number. Returns the number, or 0 when the name cannot be
+    // Registers `local_name` under the calling extension's id and returns the
+    // number both SaveXML lookups answer for the stored `<id>.<local_name>`.
+    // `_api_ptr` is the caller's X4NativeAPI, as for the settings calls; the id
+    // is the extension's content.xml id. Returns 0 when the name cannot be
     // registered.
-    int32_t (*savexml_register)(const char* name);
+    int32_t (*savexml_register)(const char* local_name, void* _api_ptr);
+
+    // The game's own number for `game_name`, or 0. Registers nothing.
+    int32_t (*savexml_lookup)(const char* game_name);
 
     // Trailing ABI pad. New function pointers are added by decrementing this
     // count — extensions compiled against an older header still see a valid
     // struct layout for every field they know about. Grow this array (never
     // shrink it) when the runway gets low; shrinking would silently break
     // already-compiled extensions.
-    void* _reserved[13];
+    void* _reserved[12];
 } X4NativeAPI;
 
 // ---- Required exports from extension DLLs --------------------------------

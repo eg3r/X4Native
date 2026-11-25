@@ -773,10 +773,18 @@ static void api_set_setting_string(const char* key, const char* value, void* api
 }
 
 // The SaveXML namespace as the game holds it now: null until the game has built it.
-static int32_t api_savexml_register(const char* name) {
+static int32_t api_savexml_register(const char* local_name, void* api_ptr) {
+    const char* ext_id = ext_id_from_api(api_ptr);
+    if (!ext_id) return 0;
     const void* ns = s_offsets.savexml_namespace
         ? *static_cast<void* const*>(s_offsets.savexml_namespace) : nullptr;
-    return SaveXml::register_name(ns, name);
+    return SaveXml::register_name(ns, ext_id, local_name);
+}
+
+static int32_t api_savexml_lookup(const char* game_name) {
+    const void* ns = s_offsets.savexml_namespace
+        ? *static_cast<void* const*>(s_offsets.savexml_namespace) : nullptr;
+    return SaveXml::game_number(ns, game_name);
 }
 
 void ExtensionManager::fill_api(X4NativeAPI& api, ExtensionInfo& ext) {
@@ -813,6 +821,7 @@ void ExtensionManager::fill_api(X4NativeAPI& api, ExtensionInfo& ext) {
     api.get_lua_property          = g_get_lua_property;
     api.get_lua_property_str      = g_get_lua_property_str;
     api.savexml_register          = api_savexml_register;
+    api.savexml_lookup            = api_savexml_lookup;
     api._ext_id               = ext.extension_id.c_str();
     api._ext_display_name     = ext.display_name.c_str();
     api._ext_priority         = static_cast<intptr_t>(ext.priority);

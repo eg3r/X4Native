@@ -449,6 +449,10 @@ static void remove_md_event_hook() {
 
 static const char* const kSaveXmlLookups[] = {"LookupKeyName_FormatXMLName", "LookupKeyName_LookupName"};
 
+// SaveXml keeps no logger of its own (the bed compiles it without the core), so
+// the core hands it its sink here.
+static void savexml_log(const char* line) { x4n::Logger::info("{}", line ? line : ""); }
+
 // Creates the hook without enabling it; the target, or null on failure.
 static void* create_savexml_hook(const char* name, void* detour, void** original) {
     void* target = x4n::GameAPI::get_internal(name);
@@ -464,8 +468,8 @@ static void* create_savexml_hook(const char* name, void* detour, void** original
     return target;
 }
 
-// Disables and removes both hooks, then drops the originals. Attached means
-// both hooks were created, so there is nothing to remove otherwise.
+// Disables and removes both hooks. The originals and the name table stay, for
+// a detour that was already inside one when the hooks were removed.
 static void remove_savexml_hooks() {
     if (!x4n::SaveXml::attached()) return;
     for (const char* name : kSaveXmlLookups) {
@@ -481,6 +485,8 @@ static void remove_savexml_hooks() {
 // attached before either hook is enabled, so no call reaches SaveXml without
 // them.
 static bool install_savexml_hooks() {
+    x4n::SaveXml::set_log(&savexml_log);
+
     x4n::SaveXml::FormatXMLNameFn format = nullptr;
     x4n::SaveXml::LookupNameFn    lookup = nullptr;
     void* format_target = create_savexml_hook(kSaveXmlLookups[0], reinterpret_cast<void*>(&x4n::SaveXml::format_xml_name),
@@ -512,6 +518,7 @@ static bool install_savexml_hooks() {
 // ---------------------------------------------------------------------------
 
 static void impl_discover_extensions() {
+    x4n::SaveXml::begin_load();
     x4n::ExtensionManager::discover();
     x4n::ExtensionManager::load_all();
 }
