@@ -538,7 +538,7 @@ MyState state = {100, 1.0f, 2.0f, 3.0f};
 x4n::stash::set("state", &state, sizeof(state));
 
 uint32_t size = 0;
-auto* p = x4n::stash::get("state", &size);  // returns nullptr if missing
+auto* p = x4n::stash::get_raw("state", &size);  // returns nullptr if missing
 if (p && size == sizeof(MyState))
     memcpy(&state, p, sizeof(state));
 
@@ -548,6 +548,8 @@ x4n::stash::clear();  // only clears YOUR extension's keys
 ```
 
 **Typed helpers** (`set<T>` / `get<T>`) require trivially-copyable types and perform a strict size check — if the stored blob size doesn't match `sizeof(T)`, `get<T>` returns `false`. This protects against reading stale data after struct layout changes during development.
+
+**Raw access is `get_raw(key, &size)`.** Up to SDK `v9.0.0-611726` it was an overload `get(key, uint32_t* out_size)`, which the compiler preferred over the typed `get` for a `uint32_t` value: `uint32_t v; x4n::stash::get("k", &v)` put the blob's size into `v`. With the rename, `get(key, &value)` is typed for every `T`. Code that read a blob through the old overload (`auto* p = x4n::stash::get("state", &size)`) no longer compiles; change it to `get_raw`.
 
 | Property | Value |
 |----------|-------|
