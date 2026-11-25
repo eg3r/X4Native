@@ -49,9 +49,10 @@ public:
     static std::string profile_ext_dir(const std::string& extension_id);
 
     // Validate a relative filename intended to live under a per-extension
-    // log directory. Returns true iff `name` is non-empty, not absolute, and
-    // contains no `..` segments. On rejection, logs a warning via `ctx` for
-    // diagnostics and returns false.
+    // log directory. Returns true iff `name` cannot leave that directory:
+    // non-empty, not rooted, no ':' (drive or data stream), no `..` segment,
+    // no device name, no segment ending in '.' or ' ' (see safe_name.h).
+    // On rejection, logs a warning via `ctx` for diagnostics and returns false.
     static bool is_safe_relative_name(const std::string& name, const char* ctx);
 
     static void shutdown();

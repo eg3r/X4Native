@@ -1,5 +1,6 @@
 #include "logger.h"
 #include "game_api.h"
+#include "safe_name.h"
 
 #include <x4_game_func_table.h>
 
@@ -118,24 +119,10 @@ std::string Logger::profile_ext_dir(const std::string& extension_id) {
 }
 
 bool Logger::is_safe_relative_name(const std::string& name, const char* ctx) {
-    if (name.empty()) {
-        Logger::warn("{}: empty filename rejected", ctx ? ctx : "path");
-        return false;
-    }
-    fs::path p(name);
-    if (p.is_absolute()) {
-        Logger::warn("{}: absolute path rejected: '{}'",
-                     ctx ? ctx : "path", name);
-        return false;
-    }
-    for (const auto& part : p) {
-        if (part == "..") {
-            Logger::warn("{}: '..' in path rejected: '{}'",
-                         ctx ? ctx : "path", name);
-            return false;
-        }
-    }
-    return true;
+    const char* reason = unsafe_relative_name_reason(name);
+    if (!reason) return true;
+    Logger::warn("{}: {} rejected: '{}'", ctx ? ctx : "path", reason, name);
+    return false;
 }
 
 void Logger::open_files() {

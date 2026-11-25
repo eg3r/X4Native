@@ -56,7 +56,7 @@ Tells the framework where to find your DLL and how to load it:
 | `priority` | No | Load order (lower = earlier, default 0) |
 | `min_api_version` | No | Minimum framework API version required |
 | `autoreload` | No | `true` → watch DLL for changes and hot-reload in-place (default `false`) |
-| `logfile` | No | Log filename inside `<profile>\x4native\` (default `<extension_id>.log`). Must be a relative name. |
+| `logfile` | No | Log filename inside `<profile>\x4native\<extension_id>\` (default `<extension_id>.log`). Must be a relative name that stays in that folder (see [Logging](#logging)). |
 | `settings` | No | Array of user-configurable settings surfaced in **Settings → Extensions → `…`** and persisted per-user. See [Settings](#settings). |
 
 > `name` was required in earlier versions and is now ignored — extension identity and the log prefix are read from `content.xml`. Leaving it in place produces a one-line deprecation warning.
@@ -381,7 +381,7 @@ x4n::log::to_file("events.log").info("event: {}", id);
 x4n::log::set_log_file("mymod_v2.log");
 ```
 
-`logfile` in `x4native.json` sets an alternative default filename inside your extension's subfolder (`<profile>\x4native\<extension_id>\`). Must be a relative name with no `..` segments:
+`logfile` in `x4native.json` sets an alternative default filename inside your extension's subfolder (`<profile>\x4native\<extension_id>\`):
 
 ```json
 {
@@ -390,7 +390,16 @@ x4n::log::set_log_file("mymod_v2.log");
 }
 ```
 
-> **Fallback when the profile path is unresolvable.** If `GetSaveFolderPath()` returns empty — an edge case that shouldn't happen during a normal game session but is theoretically possible very early during core init — logs fall back to the extension's install folder (`extensions\<ext_id>\`) for the affected call. This applies to all three sinks: the default per-extension log, `set_log_file(name)` redirects, and `to_file(name)` one-shots. The relative-path safety checks (`..` and absolute-path rejection) still apply. Settings writes use the same profile path but do **not** fall back — they refuse to persist and log a warning instead, since settings are expected to survive extension updates.
+All three ways of naming a log file (`logfile`, `set_log_file()`, `to_file()`) take a relative name, and sub-folders are allowed (`"events/trade.log"`). A name that could leave your subfolder is rejected with a warning in the framework log; `logfile` then falls back to the default name, and `set_log_file()` and `to_file()` do nothing. Rejected are names that:
+
+- start with `\` or `/`,
+- contain `:` (a drive or a data stream) or a `..` segment,
+- use a Windows device name (`nul`, `con.log`, `COM1.txt`),
+- have a segment ending in `.` or a space.
+
+If your extension passes on a name it received from outside (a config file, a network request), restrict it further yourself, for example to a fixed set of names.
+
+> **Fallback when the profile path is unresolvable.** If `GetSaveFolderPath()` returns empty — an edge case that shouldn't happen during a normal game session but is theoretically possible very early during core init — logs fall back to the extension's install folder (`extensions\<ext_id>\`) for the affected call. This applies to all three sinks: the default per-extension log, `set_log_file(name)` redirects, and `to_file(name)` one-shots. The name checks above still apply. Settings writes use the same profile path but do **not** fall back — they refuse to persist and log a warning instead, since settings are expected to survive extension updates.
 
 > **Migration from the old API** (removed, not deprecated):
 > | Old | New |
