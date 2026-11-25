@@ -243,10 +243,13 @@ X4_FUNC(void, Screenshot_ArmSingleShot, (const void* subdir_str))
 X4_FUNC(void*, BlacklistFilterBuild, (void* record))
 
 // BlacklistFetchForControllable — resolves the list a controllable uses for a type and
-// group and returns that list's evaluated filter object ([record+0x70]), or the
-// controllable's own default through its vtable slot 0x1620. The type, flag and group
-// arguments are passed through to the effective-list resolver untouched. Called by the
-// export IsComponentBlacklisted and by the match compiler.
+// group and returns that list's evaluated filter object ([record+0x70]). With no such
+// list it returns the registry's shared default filter ([registry+0x58], built on first
+// use) when the controllable's owner (vtable slot 0x1620) is the player's faction (the
+// global at 0x1438F4BD0), and null otherwise. The result is also null for a list that
+// has no criteria, so check it before use. The arguments go to the effective-list
+// resolver untouched; the resolver reads the type (0..2) and the group and never reads
+// `flag`. Called by the export IsComponentBlacklisted and by the match compiler.
 // Verified: v9.00 build 900-611726, RVA 0x00463180. Per-build RVA from version_db.
 X4_FUNC(void*, BlacklistFetchForControllable, (void* controllable, int type, int flag, int group))
 
@@ -255,13 +258,16 @@ X4_FUNC(void*, BlacklistFetchForControllable, (void* controllable, int type, int
 // filled at startup. The first argument is never read; the second is a **pointer to a
 // 16-byte string_view struct** {const char* ptr; uint64_t len} — the same calling
 // convention as FactionRelation_LookupReasonID above, and the same access violation if
-// it is passed as separate arguments instead.
+// it is passed as separate arguments instead. An unknown name returns the table's
+// fallback value (the dword at 0x143D18BE8), not an error.
 // Verified: v9.00 build 900-611726, RVA 0x0030E2D0. Per-build RVA from version_db.
 X4_FUNC(int, BlacklistTypeFromName, (void* unused, const void* type_string_view))
 
 // BlacklistRecordById — the list record for an id: the tree header in the first
 // argument, its root at +0x18, its sentinel at +0x10, a node's id at +0x20 and its
-// record at +0x28. Returns 0 for a non-positive id or a miss.
+// record at +0x28. Returns 0 for a non-positive id or a miss. The game calls the same
+// function for other registries of this layout, such as the trade rule registry, so
+// pass the blacklist registry (X4_RVA_BLACKLIST_REGISTRY, dereferenced) for a list.
 // Verified: v9.00 build 900-611726, RVA 0x00371540. Per-build RVA from version_db.
 X4_FUNC(void*, BlacklistRecordById, (void* registry, int id))
 
@@ -273,11 +279,14 @@ X4_FUNC(void*, BlacklistRecordById, (void* registry, int id))
 X4_FUNC(void*, AutoIDMap_Lookup, (void* table, uint64_t handle, int mask))
 
 // FindOfferAction — the script action handler that runs find_sell_offer and
-// find_buy_offer. action = the script action object; its command id, a uint32 at
-// X4_SCRIPT_ACTION_OFFSET_COMMAND_ID, selects the branch: 0x7B0 runs find_sell_offer
-// (the searching ship buys), 0x74E runs find_buy_offer (the ship sells). The trade
-// searches of both branches test candidate partners against the ship's trade list
-// before the handler returns. Reads rcx and r8; rdx and r9 are passed through.
+// find_buy_offer; a virtual method, reached through the action's vtable. action = the
+// script action object; its command id, a uint32 at X4_SCRIPT_ACTION_OFFSET_COMMAND_ID,
+// selects the branch: the handler tests it against the find_sell_offer id only (the
+// searching ship buys) and runs find_buy_offer (the ship sells) for any other id. Both
+// ids are per-build values; read them from X4GameOffsets (script_command_*). The trade
+// searches of both branches test candidate partners against the blacklist the action's
+// match_use_blacklist node names before the handler returns. Reads rcx and r8; rdx and
+// r9 are never read.
 // Verified: v9.00 build 900-611726, RVA 0x00B8F000. Per-build RVA from version_db.
 X4_FUNC(void*, FindOfferAction, (void* action, void* arg2, void* arg3, void* arg4))
 

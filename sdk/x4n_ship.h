@@ -16,7 +16,7 @@
 //       ship.order_mining_routine();              // autonomous mining
 //       ship.order_recon(sector_id);              // military reconnaissance
 //       ship.order_tactical(target_id, 75);       // fleet coordination
-//       void* running = ship.current_order();     // the order it executes
+//       void* running = ship.current_order();     // the order it executes, or null
 //   }
 //
 // Order creation bypasses the player-ownership check in the exported
@@ -83,6 +83,15 @@ class Ship {
     template <typename T>
     T field(uint32_t offset) const {
         return *reinterpret_cast<const T*>(reinterpret_cast<const uint8_t*>(comp_) + offset);
+    }
+
+    /// Whether the game treats `order` as running: its state (an int32 at
+    /// `state_offset`) is 4 or above and not 8, the completed state.
+    static bool order_running(const void* order, uint32_t state_offset) {
+        if (!order) return false;
+        const int32_t state =
+            *reinterpret_cast<const int32_t*>(static_cast<const uint8_t*>(order) + state_offset);
+        return state >= 4 && state != 8;
     }
 
     // ---------------------------------------------------------------
@@ -159,9 +168,14 @@ public:
     // The order queue (Queue and Immediate orders, see OrderMode) is a
     // vector of order pointers at X4_CONTROLLABLE_OFFSET_ORDER_QUEUE;
     // X4_CONTROLLABLE_OFFSET_ORDER_CURRENT_INDEX is the queue position
-    // being executed. The Default order sits outside the queue at
-    // X4_CONTROLLABLE_OFFSET_ORDER_DEFAULT and runs only while the queue
-    // is empty.
+    // being executed. Two Default orders sit outside the queue: the one
+    // the ship runs (X4_CONTROLLABLE_OFFSET_ORDER_DEFAULT) and the planned
+    // one (X4_CONTROLLABLE_OFFSET_ORDER_PLANNED_DEFAULT). A new Default
+    // order is created as the planned one and replaces the running one
+    // only when the game enables it (the export EnablePlannedDefaultOrder).
+    //
+    // An order pointer is valid until the game next changes the ship's
+    // orders. Use it at once; do not keep it across frames.
     // ---------------------------------------------------------------
 
     /// The orders in the queue, in queue order. Empty for an invalid ship.
@@ -174,23 +188,36 @@ public:
         return std::vector<void*>(begin, end);
     }
 
-    /// The Default (standing) order, or null when the ship has none.
+    /// The Default (standing) order the ship runs, or null when it has none.
     void* default_order() const {
         auto* off = detail::offsets();
         if (!valid() || !off) return nullptr;
         return field<void*>(off->controllable_order_default);
     }
 
-    /// The order the ship executes: the queue's current entry while the queue is
-    /// not empty, otherwise the Default order. Null when the current index lies
-    /// outside a non-empty queue, or when the ship has no order at all.
+    /// The planned Default order: created but not yet enabled. Null when none
+    /// is pending.
+    void* planned_default_order() const {
+        auto* off = detail::offsets();
+        if (!valid() || !off) return nullptr;
+        return field<void*>(off->controllable_order_planned_default);
+    }
+
+    /// The order the ship executes, resolved as the game resolves it (the export
+    /// IsCurrentOrderCritical): the queue's current entry when that order is
+    /// running, otherwise the Default order when that one is running. Null when
+    /// neither is. No heap allocation.
     void* current_order() const {
         auto* off = detail::offsets();
         if (!valid() || !off) return nullptr;
-        const std::vector<void*> queue = order_queue();
-        if (queue.empty()) return default_order();
+        void* const* begin = field<void* const*>(off->controllable_order_queue);
+        void* const* end = field<void* const*>(off->controllable_order_queue + 8);
         const size_t index = field<size_t>(off->controllable_order_current_index);
-        return index < queue.size() ? queue[index] : nullptr;
+        if (begin && end > begin && index < static_cast<size_t>(end - begin)
+            && order_running(begin[index], off->order_state))
+            return begin[index];
+        void* standing = field<void*>(off->controllable_order_default);
+        return order_running(standing, off->order_state) ? standing : nullptr;
     }
 
     // ---------------------------------------------------------------

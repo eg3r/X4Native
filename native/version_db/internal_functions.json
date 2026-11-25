@@ -420,8 +420,8 @@
         "method": "byte_sig",
         "steps": [
           "1. Search for the prologue signature below: home rbx, push rdi, sub rsp,20h, mov rdi,rcx",
-          "2. It calls the effective-list resolver (FUN_140463020) with its own arguments untouched, then loads the list registry global and walks it by the returned id",
-          "3. Verify: the resolved record's [record+0x70] is returned; the no-list path calls [controllable]->vtable[0x1620]",
+          "2. It calls the effective-list resolver at 0x140463020 with its own arguments untouched, then loads the list registry global and walks it by the returned id",
+          "3. Verify: the resolved record's [record+0x70] is returned; the no-list path compares [controllable]->vtable[0x1620]() with the player faction global and returns [registry+0x58] on a match, 0 otherwise",
           "4. Verify: called by the PE export IsComponentBlacklisted and by the match compiler"
         ],
         "verify_strings": [],
@@ -434,7 +434,7 @@
       "_find_hints": {
         "method": "structural",
         "steps": [
-          "1. A list type name to its index by binary search over a sorted table of 24-byte entries {char* name, uint64_t length, int64_t value} at DAT_143D18B18, with the entry count at DAT_143D18B78",
+          "1. A list type name to its index by binary search over a sorted table of 24-byte entries {char* name, uint64_t length, int64_t value} at 0x143D18B18, with the entry count at 0x143D18B78",
           "2. The second argument is a pointer to a 16-byte string_view struct {const char* ptr; uint64_t len} (movups xmm0,[rdx]); the first argument is never read",
           "3. Verify: called by the PE export SetControllableBlacklist with a type name, and by GetControllableBlacklistID",
           "4. Verify: the table is in uninitialised .data and is filled at startup, so its contents are not readable from the file"
@@ -482,7 +482,8 @@
           "1. Find the strings 'find_sell_offer does not have a suitable container or space to search in.' and 'find_buy_offer does not have a suitable container or space to search in.'",
           "2. Both are referenced from one function: the action handler that runs find_sell_offer and find_buy_offer",
           "3. Verify: the prologue matches the signature below (home rbx and r8, push rbp,rsi,rdi,r12-r15, lea rbp,[rsp-N], sub rsp,M, mov r12,r8)",
-          "4. Verify: the first use of rcx copies it to r13, and the handler branches on cmp dword [r13+8], 0x7B0 (find_sell_offer) and 0x74E (find_buy_offer)"
+          "4. Verify: the first use of rcx copies it to r13, and the handler tests cmp dword [r13+8], 0x7B0 twice: equal runs find_sell_offer, any other id runs find_buy_offer",
+          "5. Re-derive both command ids from the script name table (0x1426406A0, entries of {char* name, uint64_t id}): the id is the position of 'find_sell_offer' and of 'find_buy_offer'. The action factory also loads them as immediates in adjacent cases (mov edx, 0x7B0 at 0x140B684A2 and mov edx, 0x74E at 0x140B684EC); the buy id never appears in the handler"
         ],
         "verify_strings": [
           "find_sell_offer does not have a suitable container or space to search in.",
