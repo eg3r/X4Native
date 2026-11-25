@@ -628,6 +628,59 @@ typedef struct alignas(16) X4PlanEntry {
 #define X4_OBJECT_OFFSET_RADAR_VISIBLE          0x400  /* uint8 — radar visibility, set by engine property system + MD action */
 #define X4_OBJECT_OFFSET_FORCED_RADAR_VISIBLE   0x401  /* uint8 — forced radar visibility (satellites, nav beacons) */
 
+// ======== BLACKLISTS AND ORDERS ===========================================
+// The blacklist registry and its records (sector travel, sector activity and
+// object activity lists; trade rules live in a different registry), the order id
+// map, and the field offsets of a controllable's orders, an order, a trade and a
+// script action.
+// Verified against X4.exe v9.00 build 900-611726 —
+//   BlacklistFetchForControllable (RVA 0x00463180) loads 0x146CF1850 and walks
+//   [registry+0x18] as the tree root;
+//   BlacklistFilterBuild (RVA 0x00370740) destroys [record+0x70] through its vtable
+//   slot 0 with argument 1 and clears the slot before rebuilding;
+//   CreateOrderInternal (RVA 0x00463400) stores an order of kind 3 at
+//   [controllable+0x500], the planned Default order, and appends every other
+//   order to the queue at +0x4B0;
+//   the export EnablePlannedDefaultOrder moves [controllable+0x500] into +0x4F8
+//   and clears +0x500; the export GetDefaultOrder reads +0x4F8 and
+//   GetPlannedDefaultOrder reads +0x500;
+//   the export GetOrderQueueCurrentIdx returns [controllable+0x4E0] + 1;
+//   the export IsCurrentOrderCritical takes the queue entry at that index when
+//   its state at [order+0x20] is 4 or above and not 8, otherwise the order at
+//   [controllable+0x4F8] under the same test;
+//   SetOrderParamInternal (RVA 0x010764D0) loads [order+0x58] as a pointer to the
+//   parameter vector and indexes its 16-byte entries from the vector's begin;
+//   the export CancelPlayerInvolvedTradeDeal resolves [order+0x60] through the
+//   order id map as a trade handle;
+//   FindOfferAction (RVA 0x00B8F000) copies its first argument to r13 and tests
+//   cmp dword [r13+8], 0x7B0: equal runs find_sell_offer, any other id runs
+//   find_buy_offer.
+#define X4_RVA_BLACKLIST_REGISTRY       0x06CF1850  /* void** — pointer slot for the blacklist registry (tree header) */
+#define X4_RVA_ORDER_ID_MAP             0x06CF1750  /* void** — pointer slot for the XLib::AutoIDMap<U::OrderIDBase> that AutoIDMap_Lookup takes */
+#define X4_BLACKLIST_OFFSET_TYPE        0x08        /* int32  — the list's type index */
+#define X4_BLACKLIST_OFFSET_NAME        0x10        /* std::string (32 bytes) — the list's name */
+#define X4_BLACKLIST_OFFSET_FILTER      0x70        /* void*  — the evaluated filter object */
+#define X4_CONTROLLABLE_OFFSET_ORDER_QUEUE   0x4B0  /* order pointer vector begin (end at +0x4B8) */
+#define X4_CONTROLLABLE_OFFSET_ORDER_CURRENT_INDEX 0x4E0  /* size_t — zero-based index of the current order in the queue */
+#define X4_ORDER_OFFSET_DEFINITION      0x10        /* void*  — the order's definition */
+#define X4_ORDER_OFFSET_STATE           0x20        /* int32  — the order's state; the game treats 4 and above, except 8 (completed), as running */
+#define X4_ORDER_OFFSET_PARAMS          0x58        /* pointer to the order's parameter vector {begin, end, capacity}; null until the parameters are initialised. Entries are 16 bytes in parameter order: int32 type at +0x00, payload at +0x08 */
+#define X4_ORDER_OFFSET_TRADE           0x60        /* uint64 — the trade handle of an order that carries a trade, 0 otherwise */
+#define X4_TRADE_OFFSET_SELLER          0x10        /* uint64 — the seller's component id */
+#define X4_TRADE_OFFSET_BUYER           0x18        /* uint64 — the buyer's component id */
+#define X4_CONTROLLABLE_OFFSET_ORDER_DEFAULT 0x4F8  /* void*  — the Default (standing) order the controllable runs, held outside the queue */
+#define X4_CONTROLLABLE_OFFSET_ORDER_PLANNED_DEFAULT 0x500  /* void*  — the planned Default order: created here, it replaces the one at +0x4F8 when the game enables it */
+#define X4_SCRIPT_ACTION_OFFSET_COMMAND_ID 0x08     /* uint32 — a script action's command id (X4_SCRIPT_COMMAND_*) */
+// A command id is the position of the action's name in the game's script name
+// table (0x1426406A0: 2576 entries of {const char* name; uint64 id} in this
+// build). Per-build values: a name added to the table shifts every id after it.
+// Extensions read them from X4GameOffsets (script_command_*), never from these
+// defines. To re-derive them, find the two names in that table; the action
+// factory also loads them as immediates (mov edx, <id> at 0x140B684A2 and
+// 0x140B684EC).
+#define X4_SCRIPT_COMMAND_FIND_SELL_OFFER  0x7B0    /* find_sell_offer — the searching controllable buys */
+#define X4_SCRIPT_COMMAND_FIND_BUY_OFFER   0x74E    /* find_buy_offer — the searching controllable sells */
+
 // ======== SECTOR RESOURCE AREAS ===========================================
 // ResourceArea children of a Sector, used for unfiltered resource yield access.
 // GetDiscoveredSectorResources (FFI) has a player discovery filter at RA+0x1D0.

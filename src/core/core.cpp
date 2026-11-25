@@ -126,6 +126,28 @@ X4GameOffsets s_offsets = {
     .room_name       = X4_ROOM_OFFSET_NAME,
     .room_private    = X4_ROOM_OFFSET_PRIVATE,
     .room_persistent = X4_ROOM_OFFSET_PERSISTENT,
+
+    // --- Blacklists and orders ---
+    .blacklist_registry        = nullptr,
+    .order_id_map              = nullptr,
+    .blacklist_record_type     = X4_BLACKLIST_OFFSET_TYPE,
+    .blacklist_record_name     = X4_BLACKLIST_OFFSET_NAME,
+    .blacklist_record_filter   = X4_BLACKLIST_OFFSET_FILTER,
+    .controllable_order_queue  = X4_CONTROLLABLE_OFFSET_ORDER_QUEUE,
+    .controllable_order_current_index = X4_CONTROLLABLE_OFFSET_ORDER_CURRENT_INDEX,
+    .order_definition          = X4_ORDER_OFFSET_DEFINITION,
+    .order_params              = X4_ORDER_OFFSET_PARAMS,
+    .trade_seller              = X4_TRADE_OFFSET_SELLER,
+    .trade_buyer               = X4_TRADE_OFFSET_BUYER,
+    .controllable_order_default = X4_CONTROLLABLE_OFFSET_ORDER_DEFAULT,
+    .script_action_command_id  = X4_SCRIPT_ACTION_OFFSET_COMMAND_ID,
+    .order_trade               = X4_ORDER_OFFSET_TRADE,
+    .controllable_order_planned_default = X4_CONTROLLABLE_OFFSET_ORDER_PLANNED_DEFAULT,
+    .order_state               = X4_ORDER_OFFSET_STATE,
+
+    // --- Per-build ids ---
+    .script_command_find_sell_offer = X4_SCRIPT_COMMAND_FIND_SELL_OFFER,
+    .script_command_find_buy_offer  = X4_SCRIPT_COMMAND_FIND_BUY_OFFER,
 };
 
 static std::string g_ext_root;
@@ -161,6 +183,8 @@ static void resolve_offset_pointers(uintptr_t base) {
     s_offsets.construction_plan_db = reinterpret_cast<void*>(base + X4_RVA_CONSTRUCTION_PLAN_DB);
     s_offsets.macro_registry       = reinterpret_cast<void*>(base + X4_RVA_MACRO_REGISTRY);
     s_offsets.radar_event_vtable   = reinterpret_cast<void*>(base + X4_RADAR_EVENT_VTABLE_RVA);
+    s_offsets.blacklist_registry   = reinterpret_cast<void*>(base + X4_RVA_BLACKLIST_REGISTRY);
+    s_offsets.order_id_map         = reinterpret_cast<void*>(base + X4_RVA_ORDER_ID_MAP);
 }
 
 // ---------------------------------------------------------------------------
