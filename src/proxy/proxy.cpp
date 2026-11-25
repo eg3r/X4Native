@@ -35,6 +35,7 @@ static HMODULE          g_core_module    = nullptr;
 static CoreDispatch     g_dispatch       = {};
 static core_init_fn     g_core_init      = nullptr;
 static core_shutdown_fn g_core_shutdown  = nullptr;
+static const CoreSaveApi* g_save         = nullptr;   // core's save store; null on a core without it
 static std::string      g_ext_root;
 static std::string      g_core_path;
 static std::string      g_core_live_path;
@@ -228,6 +229,20 @@ static bool load_core() {
         return false;
     }
 
+    // The new core has taken the save data its predecessor left in the stash, if
+    // it knows about it. Remove what is left, so a core without the save store
+    // cannot hand stale values on to a later one.
+    proxy_stash_remove(X4N_SAVE_STASH_NAMESPACE, X4N_SAVE_STASH_KEY);
+
+    // Optional core interface: the save store. An older core has no such
+    // export, and save data then stays switched off.
+    if (auto save_api = reinterpret_cast<core_save_api_fn>(
+            GetProcAddress(g_core_module, "core_save_api"))) {
+        const CoreSaveApi* api = save_api();
+        if (api && api->size >= sizeof(CoreSaveApi))
+            g_save = api;
+    }
+
 #ifdef X4N_WITH_RELOAD
     read_autoreload_setting();
 #endif
@@ -240,6 +255,7 @@ static bool reload_core() {
     if (g_dispatch.prepare_reload)
         g_dispatch.prepare_reload();
 
+    g_save = nullptr;   // points into the core that is about to be unloaded
     if (g_core_module) {
         if (g_core_shutdown)
             g_core_shutdown();
@@ -650,6 +666,63 @@ static int l_set_extension_setting(lua_State* L) {
     return 0;
 }
 
+// ---------------------------------------------------------------------------
+// Save data — Lua marshalling
+// ---------------------------------------------------------------------------
+// The core owns the values extensions store in the savegame (x4n::save).
+// x4native.lua mirrors them in a Lua table the game saves. These forwarders
+// move the values between that table and the core, always in the core's
+// encoded form (plain ASCII, no NUL), so the Lua side never interprets them.
+
+// save_reset(game_active) -> kept | nil when the core has no save store
+static int l_save_reset(lua_State* L) {
+    if (!g_save) return 0;
+    x4n::lua::pushboolean(L, g_save->reset(x4n::lua::toboolean(L, 1)));
+    return 1;
+}
+
+static int l_save_import_begin(lua_State* L) {
+    if (g_save) g_save->import_begin();
+    return 0;
+}
+
+static int l_save_import_entry(lua_State* L) {
+    const char* ext   = x4n::lua::L_checkstring(L, 1);
+    const char* key   = x4n::lua::L_checkstring(L, 2);
+    const char* value = x4n::lua::L_checkstring(L, 3);
+    if (g_save) g_save->import_entry(ext, key, value);
+    return 0;
+}
+
+static int l_save_import_end(lua_State* L) {
+    if (g_save) g_save->import_end();
+    return 0;
+}
+
+// save_take_changes(full) -> changes, is_full | nothing when there is nothing
+// to write. `changes` is a flat array {ext, key, value, ext, key, value, ...};
+// a value of false marks a removed key.
+static int l_save_take_changes(lua_State* L) {
+    if (!g_save) return 0;
+    const SaveChangeC* changes = nullptr;
+    int full = 0;
+    const int n = g_save->take_changes(x4n::lua::toboolean(L, 1), &changes, &full);
+    if (n <= 0 && !full) return 0;
+
+    x4n::lua::createtable(L, n * 3, 0);
+    for (int i = 0; i < n; ++i) {
+        x4n::lua::pushstring(L, changes[i].ext);
+        x4n::lua::rawseti(L, -2, i * 3 + 1);
+        x4n::lua::pushstring(L, changes[i].key);
+        x4n::lua::rawseti(L, -2, i * 3 + 2);
+        if (changes[i].value) x4n::lua::pushstring(L, changes[i].value);
+        else                  x4n::lua::pushboolean(L, 0);
+        x4n::lua::rawseti(L, -2, i * 3 + 3);
+    }
+    x4n::lua::pushboolean(L, full);
+    return 2;
+}
+
 #ifdef X4N_WITH_RELOAD
 static int l_should_autoreload(lua_State* L) {
     if (!g_autoreload_checked) {
@@ -731,6 +804,11 @@ int luaopen_x4native(lua_State* L) {
         { "prepare_reload",          lua_guarded<l_prepare_reload>         },
         { "get_extension_settings",  lua_guarded<l_get_extension_settings> },
         { "set_extension_setting",   lua_guarded<l_set_extension_setting>  },
+        { "save_reset",              lua_guarded<l_save_reset>             },
+        { "save_import_begin",       lua_guarded<l_save_import_begin>      },
+        { "save_import_entry",       lua_guarded<l_save_import_entry>      },
+        { "save_import_end",         lua_guarded<l_save_import_end>        },
+        { "save_take_changes",       lua_guarded<l_save_take_changes>      },
 #ifdef X4N_WITH_RELOAD
         { "should_autoreload",       lua_guarded<l_should_autoreload>      },
 #endif

@@ -50,6 +50,55 @@ struct SettingValueC {
 };
 
 // ---------------------------------------------------------------------------
+// Save data — ABI shared between proxy and core
+// ---------------------------------------------------------------------------
+// One changed value of the save store (core/save_store.h), in the encoded form
+// it has in the Lua table the game stores in the savegame. A null `value`
+// means the key was removed. The strings stay valid until the next
+// save_take_changes call.
+struct SaveChangeC {
+    const char* ext;
+    const char* key;
+    const char* value;
+};
+
+// Where a core leaves the save store's values in the proxy's stash while it is
+// replaced by another core (see SaveStore::stash_snapshot). The proxy removes
+// the entry after every core load, so only the directly following core can
+// take it.
+#define X4N_SAVE_STASH_NAMESPACE "x4native"
+#define X4N_SAVE_STASH_KEY       "save_store"
+
+// The core's save store as the proxy calls it. The core owns the values; the
+// proxy moves them between the core and the Lua table.
+//
+// The proxy gets this table from the core export `core_save_api`, not through
+// CoreDispatch: a proxy that is older than the core then finds an export it
+// does not ask for, and a core that is older than the proxy lacks the export,
+// which the proxy reports to Lua as "no save data support". Neither side
+// writes into a struct the other one sized. `size` lets later versions append.
+struct CoreSaveApi {
+    uint32_t size;   // sizeof(CoreSaveApi) in the core that filled it
+
+    // A new Lua state exists. game_active tells a /reloadui (1) from a game
+    // start or load (0). Returns 1 when the core kept its values.
+    int  (*reset)(int game_active);
+
+    // Replace all values with the ones of a loaded save: begin, one entry per
+    // value in encoded form, end.
+    void (*import_begin)();
+    void (*import_entry)(const char* ext, const char* key, const char* value);
+    void (*import_end)();
+
+    // Returns the number of changed values and points *out at them. `full`
+    // asks for every value; *out_full is set when the result is every value,
+    // changed or not, and the Lua side replaces what it holds.
+    int  (*take_changes)(int full, const SaveChangeC** out, int* out_full);
+};
+
+typedef const CoreSaveApi* (*core_save_api_fn)();
+
+// ---------------------------------------------------------------------------
 // Interface between proxy and core DLL.
 // The proxy owns the CoreDispatch struct; the core fills it with function
 // pointers during core_init(). All Lua → DLL calls go through this table,

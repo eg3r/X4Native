@@ -144,6 +144,18 @@ When the player loads a savegame, X4 performs a **full Lua state teardown and re
 7. MD cue arrives later → guarded, no duplicate
 8. Gamestart MD cues complete → `event_game_started` → `on_game_started` fires
 
+### Save Data
+
+`x4n::save` values live in the core (`core/save_store`) and are mirrored in one Lua table, `__X4NATIVE_SAVE`, which `extension/ui.xml` declares as a savegame variable. The game writes that table into every save and puts it back on load; X4Native needs no hook for it. `x4native.lua` moves the values between the table and the core through the proxy.
+
+| The Lua state starts because | Core values | Ready (`on_save_data_ready`) |
+|---|---|---|
+| a save is loaded | dropped at once, then taken from the restored table | when the game fires the UI event `addonLoaded`, some frames after the player is valid. Without that event: 10 s after the MD cue for the generated universe |
+| a new game starts (`IsNewGame()`) | dropped, store starts empty | right after `on_game_loaded` |
+| `/reloadui` (a player exists at script start) | kept, and written into the new Lua state | right after `on_game_loaded` |
+
+The core's values are also carried through a core hot-reload, in the proxy's stash. The proxy reaches the store through the core export `core_save_api`, not through `CoreDispatch`, so a proxy and a core of different versions never write into each other's structs. The game side is described in [rev/UI_SAVED_VARIABLES.md](rev/UI_SAVED_VARIABLES.md).
+
 ### Extension Re-Discovery
 
 On Lua state rebuild, `ExtensionManager::discover()` performs a full shutdown cycle:

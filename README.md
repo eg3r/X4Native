@@ -40,6 +40,7 @@ X4Native provides a C++ SDK for building native extensions that run inside the g
 - **MD event interception** — typed subscriptions internal game events (destroyed, ownership changes, faction relations, etc.), usually accessed by MD only 
 - **Hot-reloadable** — `/reloadui` picks up new builds without restarting
 - **Stash** — in-memory state that survives `/reloadui` and extension reloads
+- **Save data** — per-extension values that are stored in the savegame and come back when it is loaded
 
 ### Getting the SDK
 

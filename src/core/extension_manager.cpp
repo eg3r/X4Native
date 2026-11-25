@@ -3,6 +3,7 @@
 #include "event_system.h"
 #include "game_api.h"
 #include "hook_manager.h"
+#include "save_store.h"
 #include "settings_manager.h"
 #include "x4native_defs.h"
 
@@ -621,10 +622,15 @@ void ExtensionManager::flush_pending_reloads() {
         Logger::info("Hot-reloading extension: {}", ext.display_name);
         unload_extension(ext);
 
-        if (load_extension(ext) == LoadResult::ok)
+        if (load_extension(ext) == LoadResult::ok) {
             Logger::info("Extension '{}': hot-reload complete", ext.display_name);
-        else
+            // Lua raises on_save_data_ready once per Lua state. An extension that
+            // is reloaded on its own missed it, so it gets it here, and only it.
+            if (SaveStore::ready())
+                EventSystem::fire_to("on_save_data_ready", ext.subscription_ids);
+        } else {
             Logger::error("Extension '{}': hot-reload failed", ext.display_name);
+        }
     }
 
     if (any_reloaded)
@@ -770,6 +776,51 @@ static void api_set_setting_string(const char* key, const char* value, void* api
     SettingsManager::set_string(id, key, value ? value : "");
 }
 
+// Save data wrappers — values are scoped to the calling extension's id. The
+// store allocates, so each call is guarded: no exception leaves the core.
+template <typename Fn, typename Result>
+static Result save_call(Result on_error, Fn&& fn) noexcept {
+    try {
+        return fn();
+    } catch (...) {
+        OutputDebugStringA("X4Native core: exception in a save data call\n");
+        return on_error;
+    }
+}
+
+static int api_save_set(const char* key, const void* data, uint32_t size, void* api_ptr) {
+    return save_call(0, [&] {
+        const char* id = ext_id_from_api(api_ptr);
+        return (id && SaveStore::set(id, key, data, size)) ? 1 : 0;
+    });
+}
+
+static const void* api_save_get(const char* key, uint32_t* out_size, void* api_ptr) {
+    if (out_size) *out_size = 0;
+    return save_call(static_cast<const void*>(nullptr), [&] {
+        const char* id = ext_id_from_api(api_ptr);
+        return id ? SaveStore::get(id, key, out_size) : nullptr;
+    });
+}
+
+static int api_save_remove(const char* key, void* api_ptr) {
+    return save_call(0, [&] {
+        const char* id = ext_id_from_api(api_ptr);
+        return (id && SaveStore::remove(id, key)) ? 1 : 0;
+    });
+}
+
+static void api_save_clear(void* api_ptr) {
+    save_call(0, [&] {
+        if (const char* id = ext_id_from_api(api_ptr)) SaveStore::clear(id);
+        return 0;
+    });
+}
+
+static int api_save_ready() {
+    return save_call(0, [] { return SaveStore::ready() ? 1 : 0; });
+}
+
 void ExtensionManager::fill_api(X4NativeAPI& api, ExtensionInfo& ext) {
     s_game_ver_cache = s_game_version.c_str();
 
@@ -803,6 +854,11 @@ void ExtensionManager::fill_api(X4NativeAPI& api, ExtensionInfo& ext) {
     api.stash_clear          = s_stash_clear;
     api.get_lua_property          = g_get_lua_property;
     api.get_lua_property_str      = g_get_lua_property_str;
+    api.save_set                  = api_save_set;
+    api.save_get                  = api_save_get;
+    api.save_remove               = api_save_remove;
+    api.save_clear                = api_save_clear;
+    api.save_ready                = api_save_ready;
     api._ext_id               = ext.extension_id.c_str();
     api._ext_display_name     = ext.display_name.c_str();
     api._ext_priority         = static_cast<intptr_t>(ext.priority);

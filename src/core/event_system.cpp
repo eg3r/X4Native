@@ -153,4 +153,25 @@ void EventSystem::fire(const char* event_name, void* data) {
     }
 }
 
+void EventSystem::fire_to(const char* event_name, const std::vector<int>& ids, void* data) {
+    std::vector<Subscription> snapshot;
+    {
+        std::lock_guard<std::mutex> lock(s_mutex);
+        auto it = s_subscribers.find(event_name);
+        if (it == s_subscribers.end())
+            return;
+        for (const auto& sub : it->second)
+            if (std::find(ids.begin(), ids.end(), sub.id) != ids.end())
+                snapshot.push_back(sub);
+    }
+
+    for (auto& sub : snapshot) {
+        if (seh_call_event(sub.callback, event_name, data, sub.userdata) != 0) {
+            Logger::error("Event '{}': subscriber #{} crashed (SEH) — removed",
+                          event_name, sub.id);
+            unsubscribe(sub.id);
+        }
+    }
+}
+
 } // namespace x4n
