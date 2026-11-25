@@ -4,7 +4,7 @@
 >
 > All addresses are absolute (imagebase `0x140000000`). Subtract imagebase to get RVA.
 >
-> The internals behind the `Blacklist*`, `AutoIDMap_Lookup` and `FindOfferAction` entries of `sdk/x4_internal_func_list.inc` and the blacklist offsets of `sdk/x4_manual_types.h`.
+> The internals behind the `Blacklist*`, `BlacklistData_*`, `AutoIDMap_Lookup` and `FindOfferAction` entries of `sdk/x4_internal_func_list.inc` and the blacklist offsets of `sdk/x4_manual_types.h`.
 
 ---
 
@@ -48,7 +48,7 @@ A record's check at `+0x70` is a filter object with four virtual slots: slot 0 d
 
 | Call site | Caller | When |
 |-----------|--------|------|
-| `0x1403721CB`, `0x1403725BB` | the list reader `0x140371D20` (section 6) | a save is loaded |
+| `0x1403721CB`, `0x1403725BB` | `BlacklistData_Import` | a save is loaded |
 | `0x1401BD80B` | the export `UpdateBlacklist` | a list is edited |
 | `0x1401BDD7D` | the export `UpdateBlacklist2` | a list is edited |
 | `0x140370722` | `0x140370650`, from `CreateBlacklist` / `CreateBlacklist2` through `0x140371370` | a list is created |
@@ -59,7 +59,7 @@ A record's check at `+0x70` is a filter object with four virtual slots: slot 0 d
 | Call site | Caller |
 |-----------|--------|
 | `0x140706117` | `0x140706110`, a thunk in slots 43 and 44 of the `U::Player` vtable (`0x142B329A8`) |
-| `0x1408DC9F9` | `0x1408DC5F0`, the save reader that also calls the list reader |
+| `0x1408DC9F9` | `0x1408DC5F0`, the save reader that also calls `BlacklistData_Import` |
 | `0x140BD3617`, `0x140BD363C` | `0x140BD3570`, a script action handler, after it sets or clears the value at `+0x390` of a space |
 | `0x1407EDED6` | `0x1407EDE90`, after it clears the same value |
 | `0x1409EDF7D` | `0x1409ED5B0` |
@@ -95,9 +95,9 @@ A trade itself is resolved from a handle through the order id map, `XLib::AutoID
 
 ## 6. The writer and the reader
 
-The registry is saved and loaded through one pair of functions, each called once by the universe's save and load with the registry. Neither is a registered internal function yet; they are described here by address.
+The registry is saved and loaded through one pair of functions, each called once by the universe's save and load with the registry:
 
-- The list writer `(registry, parent)` (`0x1403725E0`) writes one `<blacklist>` element (id `0x67`) per record under `parent`. Each node is allocated through `GameAlloc` (0xF8 bytes), carries the list's `id` (`0x1FE`), `type`, `name`, its macros, its `<owner>` with `factions` (ids joined by a space) and `whitelist` (written as `"1"`, and only when on), and its hazardous flag, and is appended to `parent`'s children. The writer rebuilds every element from its record on each save.
-- The list reader `(registry, lists)` (`0x140371D20`) reads every `<blacklist>` child of `lists` into a record, matching attribute and child ids against the SaveXML numbers it knows and skipping any other node; it keeps the first `<owner>` only. It rebuilds each record's check through `BlacklistFilterBuild`. Its error strings begin `BlacklistData::Import()`.
+- `BlacklistData_Export(registry, parent)` (`0x1403725E0`) writes one `<blacklist>` element (id `0x67`) per record under `parent`. Each node is allocated through `GameAlloc` (0xF8 bytes), carries the list's `id` (`0x1FE`), `type`, `name`, its macros, its `<owner>` with `factions` (ids joined by a space) and `whitelist` (written as `"1"`, and only when on), and its hazardous flag, and is appended to `parent`'s children. The writer rebuilds every element from its record on each save. Node building is described in `docs/rev/SAVE_XML.md` §5.
+- `BlacklistData_Import(registry, lists)` (`0x140371D20`) reads every `<blacklist>` child of `lists` into a record, matching attribute and child ids against the SaveXML numbers it knows and skipping any other node; it keeps the first `<owner>` only. It rebuilds each record's check through `BlacklistFilterBuild`. Its error strings begin `BlacklistData::Import()`.
 
-Element and attribute names in a save are numbers from the game's SaveXML name table.
+Element and attribute names in a save are numbers from the SaveXML table; see `docs/rev/SAVE_XML.md`.

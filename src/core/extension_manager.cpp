@@ -3,12 +3,14 @@
 #include "event_system.h"
 #include "game_api.h"
 #include "hook_manager.h"
+#include "save_xml.h"
 #include "settings_manager.h"
 #include "x4native_defs.h"
 
 #include <x4_game_types.h>
 #include <x4_game_func_table.h>
 #include <x4_game_offsets.h>
+#include <x4_manual_types.h>
 
 // Runtime-resolved offsets populated by core.cpp::populate_offsets()
 extern X4GameOffsets s_offsets;
@@ -770,6 +772,13 @@ static void api_set_setting_string(const char* key, const char* value, void* api
     SettingsManager::set_string(id, key, value ? value : "");
 }
 
+// The SaveXML namespace as the game holds it now: null until the game has built it.
+static int32_t api_savexml_register(const char* name) {
+    const void* ns = s_offsets.savexml_namespace
+        ? *static_cast<void* const*>(s_offsets.savexml_namespace) : nullptr;
+    return SaveXml::register_name(ns, name);
+}
+
 void ExtensionManager::fill_api(X4NativeAPI& api, ExtensionInfo& ext) {
     s_game_ver_cache = s_game_version.c_str();
 
@@ -803,6 +812,7 @@ void ExtensionManager::fill_api(X4NativeAPI& api, ExtensionInfo& ext) {
     api.stash_clear          = s_stash_clear;
     api.get_lua_property          = g_get_lua_property;
     api.get_lua_property_str      = g_get_lua_property_str;
+    api.savexml_register          = api_savexml_register;
     api._ext_id               = ext.extension_id.c_str();
     api._ext_display_name     = ext.display_name.c_str();
     api._ext_priority         = static_cast<intptr_t>(ext.priority);
