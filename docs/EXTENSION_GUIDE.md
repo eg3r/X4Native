@@ -710,6 +710,7 @@ Each extension controls its own autoreload independently via its `x4native.json`
 - **Never call game functions before `on_game_loaded`** — the game world isn't ready yet.
 - **All code runs on the UI thread** — no threading required, no thread safety concerns.
 - **Extensions are auto-cleaned on unload** — hooks and event subscriptions are removed automatically, but explicit cleanup in `X4N_SHUTDOWN` is recommended.
+- **`X4N_SHUTDOWN` does not run when the game exits** — the process ends without unloading extensions, so do not rely on it for anything that must be written before exit. If your extension starts threads of its own, do all stopping and joining in `X4N_SHUTDOWN` and never in the destructor of a static object: at exit Windows has already ended every other thread when those destructors run, so one that waits for a thread never returns and the game process hangs. Keep such objects behind plain pointers that you create in `X4N_EXTENSION` and delete in `X4N_SHUTDOWN`.
 - **Static variables are lost on reload** — Use `x4n::stash` (fast, in-memory, survives reload), `x4n::save` (stored in the savegame) or disk files (survives game exit) to preserve state.
 - **Protected UI mode must be OFF** in game settings for native extensions to work.
 - **Game updates may break hooks** — function signatures or addresses can change between patches.
